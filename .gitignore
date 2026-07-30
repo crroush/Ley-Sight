@@ -1,0 +1,57 @@
+# ------------------------------------------------------------------------------
+# Dependencies
+# ------------------------------------------------------------------------------
+node_modules/
+.pnp
+.pnp.js
+package-lock.json
+.vite
+
+# ------------------------------------------------------------------------------
+# Build outputs & Caches (Vite / TypeScript)
+# ------------------------------------------------------------------------------
+# Vite dumps the production build into /dist by default
+dist/
+dist-ssr/
+
+# TypeScript cache from running `tsc -b` in your build script
+*.tsbuildinfo
+
+# ------------------------------------------------------------------------------
+# Logs & Diagnostic Reports
+# ------------------------------------------------------------------------------
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ------------------------------------------------------------------------------
+# Local Environment Variables
+# ------------------------------------------------------------------------------
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ------------------------------------------------------------------------------
+# OS & Editor Cruft
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# VS Code / IntelliJ
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
