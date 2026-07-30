@@ -51,6 +51,7 @@ import type {
   WorkerProgress,
 } from "./lib/types";
 import { csvSchemaKey } from "./lib/csvSchema";
+import { extendEngineState } from "./lib/engineState";
 import {
   COLOR_PALETTES,
   paletteCss,
@@ -1199,7 +1200,10 @@ export function App() {
           dataset: message.dataset,
           tableData: message.tableData ?? null,
           summary: message.summary,
-          engineState: undefined,
+          engineState: extendEngineState(
+            pending.previousTab?.engineState,
+            message.summary.rowCount,
+          ),
           status: "ready",
         };
         replaceTabs((current) =>
