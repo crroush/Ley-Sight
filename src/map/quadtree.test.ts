@@ -34,4 +34,26 @@ describe("quadtree", () => {
     assert.equal(rebuildVisibility(root, accessor), 2_500);
     assert.equal(root.visibleCount, 2_500);
   });
+
+  it("normalizes 0-360 longitudes and selects points in wrapped worlds", () => {
+    const coordinate = projectLonLat(350, 10)!;
+    const visible = new Uint8Array([1]);
+    const accessor: PointAccessor = {
+      x: () => coordinate[0],
+      y: () => coordinate[1],
+      isVisible: () => visible[0] === 1,
+    };
+    const root = createRoot();
+    insert(root, 0, accessor);
+    assert.ok(coordinate[0] < 0);
+    assert.equal(
+      nearestPoint(
+        root,
+        accessor,
+        [coordinate[0] + 40_075_016.68557849, coordinate[1]],
+        10,
+      ),
+      0,
+    );
+  });
 });

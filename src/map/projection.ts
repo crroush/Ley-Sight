@@ -1,7 +1,13 @@
 import { WEB_MERCATOR_HALF_WORLD } from "./quadtree";
 
+export function normalizeLongitude(longitude: number): number {
+  if (!Number.isFinite(longitude)) return Number.NaN;
+  const normalized = ((longitude + 180) % 360 + 360) % 360 - 180;
+  return normalized === -180 && longitude > 0 ? 180 : normalized;
+}
+
 export function projectLongitude(longitude: number): number {
-  return longitude * (WEB_MERCATOR_HALF_WORLD / 180);
+  return normalizeLongitude(longitude) * (WEB_MERCATOR_HALF_WORLD / 180);
 }
 
 export function projectLatitude(rawLatitude: number): number {

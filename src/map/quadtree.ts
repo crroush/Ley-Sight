@@ -30,7 +30,10 @@ export function projectLonLat(
 ): [number, number] | null {
   if (!Number.isFinite(longitude) || !Number.isFinite(rawLatitude)) return null;
   const latitude = Math.max(-85.05112878, Math.min(85.05112878, rawLatitude));
-  const x = longitude * (WEB_MERCATOR_HALF_WORLD / 180);
+  const wrappedLongitude = ((longitude + 180) % 360 + 360) % 360 - 180;
+  const normalizedLongitude =
+    wrappedLongitude === -180 && longitude > 0 ? 180 : wrappedLongitude;
+  const x = normalizedLongitude * (WEB_MERCATOR_HALF_WORLD / 180);
   const y =
     Math.log(Math.tan(((90 + latitude) * Math.PI) / 360)) *
     (WEB_MERCATOR_HALF_WORLD / Math.PI);
@@ -218,23 +221,25 @@ export function nearestPoint(
   ];
   let best = -1;
   let bestDistance = radius * radius;
-  const stack = [root];
-  while (stack.length) {
-    const node = stack.pop()!;
-    if (node.visibleCount <= 0 || !intersects(node, extent)) continue;
-    if (node.children) {
-      stack.push(...node.children);
-      continue;
-    }
-    for (const index of node.items) {
-      if (!accessor.isVisible(index)) continue;
-      const x = wrapXForExtent(accessor.x(index), extent);
-      const dx = x - coordinate[0];
-      const dy = accessor.y(index) - coordinate[1];
-      const distance = dx * dx + dy * dy;
-      if (distance <= bestDistance) {
-        best = index;
-        bestDistance = distance;
+  for (const queryExtent of renderQueryExtents(extent)) {
+    const stack = [root];
+    while (stack.length) {
+      const node = stack.pop()!;
+      if (node.visibleCount <= 0 || !intersects(node, queryExtent)) continue;
+      if (node.children) {
+        stack.push(...node.children);
+        continue;
+      }
+      for (const index of node.items) {
+        if (!accessor.isVisible(index)) continue;
+        const x = wrapXForExtent(accessor.x(index), extent);
+        const dx = x - coordinate[0];
+        const dy = accessor.y(index) - coordinate[1];
+        const distance = dx * dx + dy * dy;
+        if (distance <= bestDistance) {
+          best = index;
+          bestDistance = distance;
+        }
       }
     }
   }

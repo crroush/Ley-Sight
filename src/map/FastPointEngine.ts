@@ -931,30 +931,35 @@ export class FastPointEngine {
     ];
     let best = -1;
     let bestDistance = radius * radius;
-    const stack = [0];
-    while (stack.length) {
-      const node = stack.pop()!;
-      if (this.nodeVisible[node] <= 0 || !this.nodeIntersects(node, extent)) {
-        continue;
-      }
-      if (!this.isLeaf(node)) {
-        this.pushChildren(stack, node);
-        continue;
-      }
-      for (
-        let offset = this.spatial.nodeStart[node];
-        offset < this.spatial.nodeEnd[node];
-        offset += 1
-      ) {
-        const index = this.spatial.order[offset];
-        if (!this.isVisible(index)) continue;
-        const x = wrapXForExtent(this.x[index], extent);
-        const dx = x - coordinate[0];
-        const dy = this.y[index] - coordinate[1];
-        const distance = dx * dx + dy * dy;
-        if (distance <= bestDistance) {
-          best = index;
-          bestDistance = distance;
+    for (const queryExtent of renderQueryExtents(extent)) {
+      const stack = [0];
+      while (stack.length) {
+        const node = stack.pop()!;
+        if (
+          this.nodeVisible[node] <= 0 ||
+          !this.nodeIntersects(node, queryExtent)
+        ) {
+          continue;
+        }
+        if (!this.isLeaf(node)) {
+          this.pushChildren(stack, node);
+          continue;
+        }
+        for (
+          let offset = this.spatial.nodeStart[node];
+          offset < this.spatial.nodeEnd[node];
+          offset += 1
+        ) {
+          const index = this.spatial.order[offset];
+          if (!this.isVisible(index)) continue;
+          const x = wrapXForExtent(this.x[index], extent);
+          const dx = x - coordinate[0];
+          const dy = this.y[index] - coordinate[1];
+          const distance = dx * dx + dy * dy;
+          if (distance <= bestDistance) {
+            best = index;
+            bestDistance = distance;
+          }
         }
       }
     }
