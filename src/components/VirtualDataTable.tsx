@@ -247,6 +247,14 @@ export function VirtualDataTable({
   }, [rowCount, visibleIndices]);
 
   useEffect(() => {
+    // Appending rows invalidates the index array produced by the previous sort.
+    setSort(null);
+    setSortedIndices(null);
+    setSorting(false);
+    sortRequestIdRef.current += 1;
+  }, [rowCount]);
+
+  useEffect(() => {
     // A Shift-range anchor is a presentation position, unlike selection
     // membership. Sorting invalidates the anchor but not selected source rows.
     selectionAnchorRef.current = null;
