@@ -214,6 +214,75 @@ export function VirtualDataTable({
     overscan: 14,
   });
 
+  const runSort = (activeSort: SortState): void => {
+    const worker = sortWorkerRef.current;
+    if (!worker || !engine || !rowCount) return;
+    const requestId = ++sortRequestIdRef.current;
+    const visible = visibleIndices
+      ? (visibleIndices.slice() as Uint32Array<ArrayBuffer>)
+      : null;
+    const transfer: Transferable[] = visible ? [visible.buffer] : [];
+    setSorting(true);
+
+    if (activeSort.column === SOURCE_INDEX_COLUMN) {
+      worker.postMessage({
+        type: "sort-index",
+        requestId,
+        rowCount,
+        direction: activeSort.direction,
+        focusIndex: engine.selectionFocusIndex,
+        visibleIndices: visible,
+      }, transfer);
+      return;
+    }
+
+    const numeric = numericSortSource(activeSort.column, mapping, engine);
+    if (numeric) {
+      transfer.push(numeric.values.buffer);
+      worker.postMessage({
+        type: "sort-number",
+        requestId,
+        values: numeric.values,
+        direction: activeSort.direction,
+        invert: numeric.invert,
+        focusIndex: engine.selectionFocusIndex,
+        visibleIndices: visible,
+      }, transfer);
+      return;
+    }
+
+    const custom = customColumns.get(activeSort.column);
+    if (!custom) {
+      setSorting(false);
+      return;
+    }
+    if (custom.kind === "number") {
+      const values = custom.values.slice() as Float64Array<ArrayBuffer>;
+      transfer.push(values.buffer);
+      worker.postMessage({
+        type: "sort-number",
+        requestId,
+        values,
+        direction: activeSort.direction,
+        invert: false,
+        focusIndex: engine.selectionFocusIndex,
+        visibleIndices: visible,
+      }, transfer);
+      return;
+    }
+    const codes = custom.codes.slice() as Uint32Array<ArrayBuffer>;
+    transfer.push(codes.buffer);
+    worker.postMessage({
+      type: "sort-category",
+      requestId,
+      codes,
+      dictionary: custom.dictionary,
+      direction: activeSort.direction,
+      focusIndex: engine.selectionFocusIndex,
+      visibleIndices: visible,
+    }, transfer);
+  };
+
   useEffect(() => {
     const worker = new Worker(
       new URL("../workers/tableSort.worker.ts", import.meta.url),
@@ -245,6 +314,11 @@ export function VirtualDataTable({
     selectionAnchorRef.current = null;
     parentRef.current?.scrollTo({top: 0});
   }, [rowCount, visibleIndices]);
+
+  useEffect(() => {
+    // Preserve the user's ordering while rebuilding it to include appended rows.
+    if (sort) runSort(sort);
+  }, [rowCount]);
 
   useEffect(() => {
     // A Shift-range anchor is a presentation position, unlike selection
@@ -300,76 +374,14 @@ export function VirtualDataTable({
   };
 
   const requestSort = (column: DisplayColumn): void => {
-    const worker = sortWorkerRef.current;
-    if (!worker || !engine || !rowCount) return;
+    if (!sortWorkerRef.current || !engine || !rowCount) return;
     const direction: SortDirection =
       sort?.column === column.key && sort.direction === "ascending"
         ? "descending"
         : "ascending";
-    const requestId = ++sortRequestIdRef.current;
-    const visible = visibleIndices
-      ? (visibleIndices.slice() as Uint32Array<ArrayBuffer>)
-      : null;
-    const transfer: Transferable[] = visible ? [visible.buffer] : [];
-    setSort({column: column.key, direction});
-    setSorting(true);
-
-    if (column.key === SOURCE_INDEX_COLUMN) {
-      worker.postMessage({
-        type: "sort-index",
-        requestId,
-        rowCount,
-        direction,
-        focusIndex: engine.selectionFocusIndex,
-        visibleIndices: visible,
-      }, transfer);
-      return;
-    }
-
-    const numeric = numericSortSource(column.key, mapping, engine);
-    if (numeric) {
-      transfer.push(numeric.values.buffer);
-      worker.postMessage({
-        type: "sort-number",
-        requestId,
-        values: numeric.values,
-        direction,
-        invert: numeric.invert,
-        focusIndex: engine.selectionFocusIndex,
-        visibleIndices: visible,
-      }, transfer);
-      return;
-    }
-
-    const custom = customColumns.get(column.key);
-    if (!custom) {
-      setSorting(false);
-      return;
-    }
-    if (custom.kind === "number") {
-      const values = custom.values.slice() as Float64Array<ArrayBuffer>;
-      transfer.push(values.buffer);
-      worker.postMessage({
-        type: "sort-number",
-        requestId,
-        values,
-        direction,
-        invert: false,
-        visibleIndices: visible,
-      }, transfer);
-      return;
-    }
-    const codes = custom.codes.slice() as Uint32Array<ArrayBuffer>;
-    transfer.push(codes.buffer);
-    worker.postMessage({
-      type: "sort-category",
-      requestId,
-      codes,
-      dictionary: custom.dictionary,
-      direction,
-      focusIndex: engine.selectionFocusIndex,
-      visibleIndices: visible,
-    }, transfer);
+    const nextSort = {column: column.key, direction};
+    setSort(nextSort);
+    runSort(nextSort);
   };
 
   return (

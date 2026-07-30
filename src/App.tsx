@@ -939,11 +939,12 @@ export function App() {
           preview: 1,
           skipEmptyLines: true,
         });
-        const columns = (parsed.data[0] ?? []).map((column, index) =>
-          String(column)
-            .replace(index === 0 ? /^\uFEFF/ : /$^/, "")
-            .trim(),
-        );
+        const columns = (parsed.data[0] ?? []).map((column, index) => {
+          const normalized = String(column);
+          const withoutBom =
+            index === 0 ? normalized.replace(/^\uFEFF/, "") : normalized;
+          return withoutBom.trim();
+        });
         if (columns.length < 2) {
           throw new Error(`${file.name} has fewer than two CSV columns.`);
         }
@@ -1351,38 +1352,51 @@ export function App() {
         column,
       ]),
     );
-    const exportColumns = activeTab.columns.filter((column) =>
-      tableColumns.has(column),
-    );
-    const lines = exportColumns.length
-      ? [exportColumns.map(csvCell).join(",")]
-      : [
-          "index,latitude,longitude,timestamp,semi_major_m,semi_minor_m,tilt_deg",
-        ];
+    const exportColumns =
+      activeTab.kind === "synthetic"
+        ? [
+            "index",
+            "latitude",
+            "longitude",
+            "timestamp",
+            "semi_major_m",
+            "semi_minor_m",
+            "tilt_deg",
+          ]
+        : activeTab.columns;
+    const mapping = activeTab.mapping;
+    const lines = [exportColumns.map(csvCell).join(",")];
     for (const index of engineRef.current.selectedIndices()) {
-      if (exportColumns.length) {
-        lines.push(
-          exportColumns
-            .map((column) =>
-              csvCell(tableColumnValue(tableColumns.get(column)!, index)),
-            )
-            .join(","),
-        );
-        continue;
-      }
       const row = engineRef.current.row(index);
-      lines.push(
-        [
-          row.index,
-          row.latitude,
-          row.longitude,
-          Number.isFinite(row.time)
+      const mappedValue = (column: string): string | number => {
+        if (activeTab.kind === "synthetic") {
+          if (column === "index") return row.index;
+          if (column === "latitude") return row.latitude;
+          if (column === "longitude") return row.longitude;
+          if (column === "timestamp") {
+            return Number.isFinite(row.time)
+              ? new Date(row.time * 1000).toISOString()
+              : "";
+          }
+          if (column === "semi_major_m") return row.semiMajor;
+          if (column === "semi_minor_m") return row.semiMinor;
+          if (column === "tilt_deg") return row.tilt;
+        }
+        if (column === mapping?.latitude) return row.latitude;
+        if (column === mapping?.longitude) return row.longitude;
+        if (column === mapping?.time) {
+          return Number.isFinite(row.time)
             ? new Date(row.time * 1000).toISOString()
-            : "",
-          row.semiMajor,
-          row.semiMinor,
-          row.tilt,
-        ].join(","),
+            : "";
+        }
+        if (column === mapping?.semiMajor) return row.semiMajor;
+        if (column === mapping?.semiMinor) return row.semiMinor;
+        if (column === mapping?.tilt) return row.tilt;
+        const tableColumn = tableColumns.get(column);
+        return tableColumn ? tableColumnValue(tableColumn, index) : "";
+      };
+      lines.push(
+        exportColumns.map((column) => csvCell(mappedValue(column))).join(","),
       );
     }
     const url = URL.createObjectURL(
@@ -1418,6 +1432,21 @@ export function App() {
     action(current);
     setVisibleIndices(
       current.visibleCount === rowCount ? null : current.visibleIndices(),
+    );
+  };
+
+  const showAllRows = (): void => {
+    updateVisibility((current) => current.showAll());
+    setTimeStart(timeMinimum);
+    setTimeEnd(timeMaximum);
+    const id = activeTabIdRef.current;
+    if (id == null) return;
+    replaceTabs((current) =>
+      current.map((tab) => {
+        if (tab.id !== id) return tab;
+        const {timeFilterRange: _discarded, ...withoutTimeFilter} = tab;
+        return withoutTimeFilter;
+      }),
     );
   };
 
@@ -1681,9 +1710,7 @@ export function App() {
                 disabled={!rowCount}
                 onClick={(event) => {
                   event.currentTarget.closest("details")?.removeAttribute("open");
-                  updateVisibility((current) => current.showAll());
-                  setTimeStart(timeMinimum);
-                  setTimeEnd(timeMaximum);
+                  showAllRows();
                 }}
               >
                 Show All
@@ -1865,9 +1892,7 @@ export function App() {
             className="tool-button"
             disabled={!rowCount}
             onClick={() => {
-              updateVisibility((current) => current.showAll());
-              setTimeStart(timeMinimum);
-              setTimeEnd(timeMaximum);
+              showAllRows();
             }}
           >
             <Eye size={16} /> Show all
