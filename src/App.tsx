@@ -112,6 +112,7 @@ type DatasetTab = {
   tableData: PackedTableData | null;
   summary: DatasetSummary | null;
   engineState?: EngineDatasetState;
+  timeFilterRange?: [number, number];
   timeViewRange?: [number, number];
   status: "loading" | "ready";
 };
@@ -263,6 +264,7 @@ function workspaceManifest(
       colorField: tab.colorField,
       colorPalette: tab.colorPalette,
       colorValueMode: tab.colorValueMode,
+      timeFilterRange: tab.timeFilterRange,
       timeViewRange: tab.timeViewRange,
     }];
   });
@@ -483,7 +485,11 @@ export function App() {
       if (hasTimes) {
         setTimeMinimum(tab.summary.timeMin);
         setTimeMaximum(tab.summary.timeMax);
-        const restoredRange = tab.engineState?.timeRange;
+        const restoredRange =
+          tab.timeFilterRange ?? tab.engineState?.timeRange;
+        if (restoredRange) {
+          current.setTimeRange(restoredRange[0], restoredRange[1]);
+        }
         setTimeStart(
           restoredRange && Number.isFinite(restoredRange[0])
             ? restoredRange[0]
@@ -548,6 +554,10 @@ export function App() {
   );
 
   useEffect(() => {
+    // Strict Mode intentionally mounts, cleans up, and remounts effects in
+    // development. Ignore asynchronous work from the disposed generation so
+    // one saved dataset can never be enqueued twice.
+    let cancelled = false;
     const worker = new Worker(
       new URL("./workers/data.worker.ts", import.meta.url),
       { type: "module" },
@@ -558,6 +568,7 @@ export function App() {
     };
     void (async () => {
       if (!opfsSupported()) {
+        if (cancelled) return;
         recoveryInitializedRef.current = true;
         recoveryActiveRef.current = false;
         setPersistenceState("unavailable");
@@ -566,7 +577,9 @@ export function App() {
       }
       try {
         await requestPersistentStorage();
+        if (cancelled) return;
         const workspace = await loadWorkspaceManifest();
+        if (cancelled) return;
         if (!workspace?.tabs.length) {
           recoveryInitializedRef.current = true;
           recoveryActiveRef.current = false;
@@ -580,6 +593,7 @@ export function App() {
           const files: File[] = [];
           for (const storedFile of tab.files) {
             files.push(await materializeCsvFile(storedFile));
+            if (cancelled) return;
           }
           recoveryQueueRef.current.push({
             tab,
@@ -594,6 +608,7 @@ export function App() {
         recoveryInitializedRef.current = true;
         advanceImportQueueRef.current();
       } catch (caught) {
+        if (cancelled) return;
         recoveryInitializedRef.current = true;
         recoveryActiveRef.current = false;
         setPersistenceState("error");
@@ -606,8 +621,9 @@ export function App() {
       }
     })();
     return () => {
+      cancelled = true;
       worker.terminate();
-      workerRef.current = null;
+      if (workerRef.current === worker) workerRef.current = null;
     };
   }, []);
 
@@ -807,6 +823,8 @@ export function App() {
         dataset: null,
         tableData: null,
         summary: null,
+        timeFilterRange:
+          refreshedExisting?.timeFilterRange ?? recovery?.timeFilterRange,
         timeViewRange: refreshedExisting?.timeViewRange ?? recovery?.timeViewRange,
         status: "loading",
       };
@@ -1296,6 +1314,14 @@ export function App() {
   const applyTimeRange = (start: number, end: number): void => {
     setTimeStart(start);
     setTimeEnd(end);
+    const id = activeTabIdRef.current;
+    if (id != null) {
+      replaceTabs((current) =>
+        current.map((tab) =>
+          tab.id === id ? { ...tab, timeFilterRange: [start, end] } : tab,
+        ),
+      );
+    }
     if (!engineRef.current) return;
     engineRef.current.setTimeRange(start, end);
     setVisibleIndices(

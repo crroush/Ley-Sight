@@ -37,7 +37,7 @@ test("every standalone OpenLayers entry imports the OpenLayers controls CSS", ()
   }
 });
 
-test("CSV workspace keeps examples on the landing page and uses Qt menus", () => {
+test("CSV workspace keeps examples on the landing page and uses reference menus", () => {
   const app = source("App.tsx");
   assert.doesNotMatch(app, /All examples/);
   assert.match(app, /<summary>File<\/summary>/);
@@ -46,6 +46,17 @@ test("CSV workspace keeps examples on the landing page and uses Qt menus", () =>
   assert.match(app, /Show Only Selected/);
   assert.match(app, /Hide Selected/);
   assert.match(app, /Show All/);
+});
+
+test("CSV recovery persists both timeline ranges and cancels stale restores", () => {
+  const app = source("App.tsx");
+  const storage = source("storage/opfsWorkspace.ts");
+  assert.match(app, /timeFilterRange: tab\.timeFilterRange/);
+  assert.match(app, /tab\.timeFilterRange \?\? tab\.engineState\?\.timeRange/);
+  assert.match(app, /let cancelled = false/);
+  assert.match(app, /if \(cancelled\) return/);
+  assert.match(storage, /timeFilterRange\?: \[number, number\]/);
+  assert.match(storage, /timeViewRange\?: \[number, number\]/);
 });
 
 test("CSV map reserves modifier drag for selection instead of box zoom", () => {

@@ -21,6 +21,8 @@ const VALID_WORKSPACE = {
     colorField: "__uniform__",
     colorPalette: "turbo",
     colorValueMode: "categorical",
+    timeFilterRange: [1_700_000_000_000, 1_700_003_600_000],
+    timeViewRange: [1_699_996_400_000, 1_700_007_200_000],
   }],
 };
 
@@ -41,6 +43,20 @@ describe("OPFS workspace manifest", () => {
           tabs: [{
             ...VALID_WORKSPACE.tabs[0],
             files: [{name: "positions.csv"}],
+          }],
+        }),
+      /unsupported format/,
+    );
+  });
+
+  it("rejects malformed persisted timeline ranges", () => {
+    assert.throws(
+      () =>
+        parseWorkspaceManifest({
+          ...VALID_WORKSPACE,
+          tabs: [{
+            ...VALID_WORKSPACE.tabs[0],
+            timeFilterRange: [Number.NaN, 42],
           }],
         }),
       /unsupported format/,

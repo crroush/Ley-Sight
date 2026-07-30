@@ -27,6 +27,7 @@ export type PersistedCsvTab = {
   colorField: string;
   colorPalette: ColorPalette;
   colorValueMode: ColorValueMode;
+  timeFilterRange?: [number, number];
   timeViewRange?: [number, number];
 };
 
@@ -136,6 +137,17 @@ function isPersistedFile(value: unknown): value is PersistedCsvFile {
   );
 }
 
+function isOptionalFiniteRange(
+  value: unknown,
+): value is [number, number] | undefined {
+  return value === undefined || (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    value.every((entry) => typeof entry === "number" && Number.isFinite(entry)) &&
+    value[0] <= value[1]
+  );
+}
+
 function isPersistedTab(value: unknown): value is PersistedCsvTab {
   if (!value || typeof value !== "object") return false;
   const tab = value as Partial<PersistedCsvTab>;
@@ -150,7 +162,9 @@ function isPersistedTab(value: unknown): value is PersistedCsvTab {
     Boolean(tab.mapping) &&
     typeof tab.colorField === "string" &&
     typeof tab.colorPalette === "string" &&
-    typeof tab.colorValueMode === "string"
+    typeof tab.colorValueMode === "string" &&
+    isOptionalFiniteRange(tab.timeFilterRange) &&
+    isOptionalFiniteRange(tab.timeViewRange)
   );
 }
 
