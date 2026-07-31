@@ -240,18 +240,26 @@ export function ViewshedApp() {
     terrainProviderRef.current = new TerrariumTerrainProvider();
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === "i") keysRef.current.i = true;
-      if (e.key.toLowerCase() === "t") keysRef.current.t = true;
+      if (e.key.toLowerCase() === "i" && !e.repeat) keysRef.current.i = true;
+      if (e.key.toLowerCase() === "t" && !e.repeat) keysRef.current.t = true;
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === "i") keysRef.current.i = false;
       if (e.key.toLowerCase() === "t") keysRef.current.t = false;
     };
+    const handleBlur = () => {
+      // Un-stick keys if the user clicks away from the browser
+      keysRef.current.i = false;
+      keysRef.current.t = false;
+    };
+
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
     };
   }, []);
 
@@ -408,6 +416,9 @@ export function ViewshedApp() {
   // --------------------------------------------------------------------------
   // Exact DEM Line Sampling Logic
   // --------------------------------------------------------------------------
+  // --------------------------------------------------------------------------
+  // Exact DEM Line Sampling Logic
+  // --------------------------------------------------------------------------
   const fetchDemProfile = async (
     obs: Observer,
     tgtLat: number,
@@ -417,27 +428,45 @@ export function ViewshedApp() {
     if (!terrainProviderRef.current) throw new Error("Provider not ready");
     const provider = terrainProviderRef.current;
 
-    const SAMPLES = 100;
-    const points: { x: number; y: number }[] = [];
+    // 1. Logical thresholds for sample spacing based on observer altitude
+    let minSpacingM = 30.0; // High-res (~Zoom 14) for ground collectors
+    if (obs.altitude_m > 10_000) minSpacingM = 90.0; // Medium-res for aircraft
+    if (obs.altitude_m > 100_000) minSpacingM = 5000.0; // Low-res for GEO/Space
+
+    // 2. Calculate number of samples, clamped between 100 and 1000 for UI responsiveness
+    let samples = Math.ceil(distM / minSpacingM);
+    samples = Math.max(100, Math.min(samples, 1000));
+
+    // 3. Determine optimal zoom level for the actual spacing to prevent over-fetching
+    const actualSpacingM = distM / samples;
+    // Web Mercator Earth Circumference = 40075016.68 meters
+    let zoom = Math.floor(Math.log2(40075016.68 / (256 * actualSpacingM)));
+    zoom = Math.max(5, Math.min(14, zoom)); // Clamp between zoom 5 (global) and 14 (high-res)
 
     const startXM = lonToMercatorX(obs.longitude_deg);
     const startYM = latToMercatorY(obs.latitude_deg);
     const endXM = lonToMercatorX(tgtLon);
     const endYM = latToMercatorY(tgtLat);
 
-    for (let i = 0; i <= SAMPLES; i++) {
-      const f = i / SAMPLES;
-      const xM = startXM + (endXM - startXM) * f;
-      const yM = startYM + (endYM - startYM) * f;
-      let elev = 0;
-      try {
-        elev = Math.max(0, await provider.samplePoint(xM, yM, 11));
-      } catch (e) {}
-      points.push({ x: distM * f, y: elev });
+    const xs = new Float64Array(samples + 1);
+    const ys = new Float64Array(samples + 1);
+
+    for (let i = 0; i <= samples; i++) {
+      const f = i / samples;
+      xs[i] = startXM + (endXM - startXM) * f;
+      ys[i] = startYM + (endYM - startYM) * f;
+    }
+
+    // 4. Bulk fetch the profile elevations using our synchronous tile grid sampler
+    const elevations = await provider.sampleGrid(xs, ys, zoom);
+
+    const points: { x: number; y: number }[] = [];
+    for (let i = 0; i <= samples; i++) {
+      points.push({ x: distM * (i / samples), y: Math.max(0, elevations[i]) });
     }
 
     const obsElev = points[0].y;
-    const tgtElev = points[SAMPLES].y;
+    const tgtElev = points[samples].y;
 
     let finalObsAlt = obs.altitude_m;
     if (obs.kind === "ground") finalObsAlt = obsElev + clearanceRef.current;
@@ -448,12 +477,14 @@ export function ViewshedApp() {
     let maxElev = Math.max(finalObsAlt, finalTgtAlt);
     let isBlocked = false;
 
-    for (let i = 0; i <= SAMPLES; i++) {
-      const f = i / SAMPLES;
+    for (let i = 0; i <= samples; i++) {
+      const f = i / samples;
       const rayAlt = finalObsAlt + f * (finalTgtAlt - finalObsAlt);
       const elev = points[i].y;
       minElev = Math.min(minElev, elev);
       maxElev = Math.max(maxElev, elev);
+
+      // Ignore the immediate first and last 2% of the ray to prevent clipping the observer/target
       if (elev > rayAlt && f > 0.02 && f < 0.98) isBlocked = true;
     }
 
@@ -466,7 +497,6 @@ export function ViewshedApp() {
       finalTgtAlt,
     };
   };
-
   // --------------------------------------------------------------------------
   // Map Initialization & Event Setup
   // --------------------------------------------------------------------------
@@ -475,6 +505,7 @@ export function ViewshedApp() {
 
     const map = new Map({
       target: mapTargetRef.current,
+      moveTolerance: 5,
       layers: [
         osmLayerRef.current,
         visibilityLayerRef.current,
@@ -490,22 +521,7 @@ export function ViewshedApp() {
 
     map.on("click", (evt) => {
       const [lon, lat] = toLonLat(evt.coordinate);
-
       const vSource = validationLayerRef.current.getSource();
-      vSource?.clear();
-      const targetFeature = new Feature(new Point(evt.coordinate));
-      targetFeature.setStyle(
-        new Style({
-          image: new CircleStyle({
-            radius: 7,
-            fill: new Fill({ color: "#2563eb" }),
-            stroke: new Stroke({ color: "#ffffff", width: 2 }),
-          }),
-        })
-      );
-      vSource?.addFeature(targetFeature);
-      validationLayerRef.current.changed();
-      map.renderSync();
 
       // 1. Editor Map Pick
       if (mapPickWaitingRef.current !== null) {
@@ -526,6 +542,7 @@ export function ViewshedApp() {
             5
           )}`
         );
+        vSource?.clear();
         invalidateAndRecompute();
         return;
       }
@@ -546,11 +563,12 @@ export function ViewshedApp() {
             5
           )}`
         );
+        vSource?.clear();
         invalidateAndRecompute();
         return;
       }
 
-      // 3. 'I' (Inspect) Modifier -> Generates Tabbed 2D Profiles
+      // 3. 'I' (Inspect) Modifier
       if (keysRef.current.i) {
         const activeIdxs = Array.from(activeCollectorsRef.current);
         if (activeIdxs.length === 0) return;
@@ -558,6 +576,22 @@ export function ViewshedApp() {
         setInspectorText(
           `Inspecting Profile Target: ${lat.toFixed(6)}°, ${lon.toFixed(6)}°`
         );
+
+        // Clear any old lines/dots before drawing the new ones
+        vSource?.clear();
+
+        // ONLY draw the blue dot if 'I' is pressed
+        const targetFeature = new Feature(new Point(evt.coordinate));
+        targetFeature.setStyle(
+          new Style({
+            image: new CircleStyle({
+              radius: 7,
+              fill: new Fill({ color: "#2563eb" }),
+              stroke: new Stroke({ color: "#ffffff", width: 2 }),
+            }),
+          })
+        );
+        vSource?.addFeature(targetFeature);
 
         activeIdxs.forEach((idx) => {
           const obs = observersRef.current[idx];
@@ -576,6 +610,9 @@ export function ViewshedApp() {
           );
           vSource?.addFeature(lineFeature);
         });
+
+        validationLayerRef.current.changed();
+        map.renderSync();
 
         const initialResults: ProfileResult[] = activeIdxs.map((idx) => {
           const obs = observersRef.current[idx];
@@ -633,18 +670,19 @@ export function ViewshedApp() {
             })
             .catch(() => {});
         });
-
         return;
       }
 
+      // 4. Default plain click (No Modifiers)
+      // Explicitly clean up the map, dismiss the inspector panel, and reset text
+      vSource?.clear();
+      validationLayerRef.current.changed();
+      map.renderSync();
       setProfileData(null);
       setInspectorText(
-        `Selected Target: ${lat.toFixed(6)}°, ${lon.toFixed(
-          6
-        )}°. Hold 'I' + click for profile.`
+        "Hold 'I' + Click to inspect. Hold 'T' + Click to teleport observer."
       );
     });
-
     const handleMapChange = () => {
       if (debounceTimerRef.current !== null)
         window.clearTimeout(debounceTimerRef.current);

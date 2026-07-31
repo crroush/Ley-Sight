@@ -21,92 +21,114 @@ export function terrainZoomForSpacing(
   );
   return Math.max(0, Math.min(TERRAIN_MAX_ZOOM, zoom));
 }
+const TILE_SIZE = 256;
 
 export class TerrariumTerrainProvider {
-  private cache = new Map<string, Float32Array>();
-
-  private getCacheKey(z: number, x: number, y: number): string {
-    return `${z}/${x}/${y}`;
-  }
+  // Existing properties...
+  private tileCache = new Map<string, Uint8ClampedArray>();
 
   /**
-   * Fetches an AWS Terrarium tile and decodes its RGB values into a Float32Array of meters.
+   * Internal helper to load and decode a tile via OffscreenCanvas
    */
-  async loadTile(z: number, x: number, y: number): Promise<Float32Array | null> {
-    const key = this.getCacheKey(z, x, y);
-    if (this.cache.has(key)) {
-      return this.cache.get(key)!;
-    }
-
-    const url = AWS_TERRARIUM_URL
-      .replace('{z}', z.toString())
-      .replace('{x}', x.toString())
-      .replace('{y}', y.toString());
+  private async loadTileData(z: number, x: number, y: number): Promise<Uint8ClampedArray | null> {
+    const key = `${z}/${x}/${y}`;
+    if (this.tileCache.has(key)) return this.tileCache.get(key)!;
 
     try {
-      const response = await fetch(url, { mode: 'cors' });
+      const url = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
+      const response = await fetch(url);
       if (!response.ok) return null;
 
       const blob = await response.blob();
       const bitmap = await createImageBitmap(blob);
 
-      const canvas = new OffscreenCanvas(TERRAIN_TILE_SIZE, TERRAIN_TILE_SIZE);
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const canvas = new OffscreenCanvas(TILE_SIZE, TILE_SIZE);
+      const ctx = canvas.getContext('2d');
       if (!ctx) return null;
 
       ctx.drawImage(bitmap, 0, 0);
-      const imageData = ctx.getImageData(0, 0, TERRAIN_TILE_SIZE, TERRAIN_TILE_SIZE);
-      const pixels = imageData.data;
+      const imageData = ctx.getImageData(0, 0, TILE_SIZE, TILE_SIZE);
 
-      const elevation = new Float32Array(TERRAIN_TILE_SIZE * TERRAIN_TILE_SIZE);
-
-      // Terrarium encoding: elevation_m = red * 256 + green + blue / 256 - 32768
-      for (let i = 0, j = 0; i < pixels.length; i += 4, j++) {
-        const r = pixels[i];
-        const g = pixels[i + 1];
-        const b = pixels[i + 2];
-        elevation[j] = (r * 256.0) + g + (b / 256.0) - 32768.0;
-      }
-
-      this.cache.set(key, elevation);
-      return elevation;
-
-    } catch (error) {
-      console.error(`Failed to load tile ${key}`, error);
+      this.tileCache.set(key, imageData.data);
+      return imageData.data;
+    } catch (err) {
       return null;
     }
   }
 
   /**
-   * Samples the elevation at a specific Web-Mercator coordinate.
-   * Note: For the full viewshed, we will eventually batch this to interpolate over the entire grid.
+   * Identifies unique tiles for an entire grid, downloads them in one bulk Promise.all,
+   * and synchronously extracts the pixel data in memory.
    */
-  async samplePoint(xM: number, yM: number, zoom: number): Promise<number> {
-    const tileCount = 1 << zoom;
-    const worldPixels = tileCount * TERRAIN_TILE_SIZE;
+  public async sampleGrid(xs: Float64Array, ys: Float64Array, zoom: number): Promise<Float64Array> {
+    const n = Math.pow(2, zoom);
+    const w = WEB_MERCATOR_WORLD_WIDTH_M;
 
-    // Map Web-Mercator meters to global pixel coordinates
-    const globalX = ((xM + WEB_MERCATOR_HALF_WORLD_M) / WEB_MERCATOR_WORLD_WIDTH_M) * worldPixels;
-    // Web Mercator Y origin is top-left for tiles, but meters go bottom-to-top
-    const globalY = ((WEB_MERCATOR_HALF_WORLD_M - yM) / WEB_MERCATOR_WORLD_WIDTH_M) * worldPixels;
+    const requiredTiles = new Set<string>();
+    const tileCoords = new Array<{tx: number, ty: number, px: number, py: number}>(xs.length);
 
-    const tileX = Math.floor(globalX / TERRAIN_TILE_SIZE) % tileCount;
-    const tileY = Math.floor(globalY / TERRAIN_TILE_SIZE);
+    // 1. Calculate tile indices for every pixel
+    for (let i = 0; i < xs.length; i++) {
+      const normX = (xs[i] + w / 2.0) / w;
+      const normY = (w / 2.0 - ys[i]) / w;
 
-    // Handle wrapping for tileX, clamp tileY
-    const safeTileX = (tileX + tileCount) % tileCount;
-    const safeTileY = Math.max(0, Math.min(tileCount - 1, tileY));
+      const exactTx = normX * n;
+      const exactTy = normY * n;
 
-    const tileData = await this.loadTile(zoom, safeTileX, safeTileY);
-    if (!tileData) return 0.0; // Fallback to 0m if tile fails
+      const tx = Math.floor(exactTx);
+      const ty = Math.floor(exactTy);
 
-    const localX = Math.floor(globalX) % TERRAIN_TILE_SIZE;
-    const localY = Math.floor(globalY) % TERRAIN_TILE_SIZE;
+      const clampedTx = Math.max(0, Math.min(n - 1, tx));
+      const clampedTy = Math.max(0, Math.min(n - 1, ty));
 
-    return tileData[localY * TERRAIN_TILE_SIZE + localX];
+      const px = Math.floor((exactTx - tx) * TILE_SIZE);
+      const py = Math.floor((exactTy - ty) * TILE_SIZE);
+
+      const clampedPx = Math.max(0, Math.min(TILE_SIZE - 1, px));
+      const clampedPy = Math.max(0, Math.min(TILE_SIZE - 1, py));
+
+      const key = `${zoom}/${clampedTx}/${clampedTy}`;
+      requiredTiles.add(key);
+      tileCoords[i] = { tx: clampedTx, ty: clampedTy, px: clampedPx, py: clampedPy };
+    }
+
+    // 2. Fetch only the unique tiles needed for this grid (usually 2 to 6 tiles)
+    const fetchPromises = Array.from(requiredTiles).map(key => {
+      const [z, x, y] = key.split('/').map(Number);
+      return this.loadTileData(z, x, y).then(data => ({ key, data }));
+    });
+
+    const tileDataMap = new Map<string, Uint8ClampedArray | null>();
+    const loadedTiles = await Promise.all(fetchPromises);
+    for (const { key, data } of loadedTiles) {
+      tileDataMap.set(key, data);
+    }
+
+    // 3. Synchronously extract the Terrarium math values
+    const results = new Float64Array(xs.length);
+    for (let i = 0; i < xs.length; i++) {
+      const coord = tileCoords[i];
+      const key = `${zoom}/${coord.tx}/${coord.ty}`;
+      const data = tileDataMap.get(key);
+
+      if (data) {
+        const idx = (coord.py * TILE_SIZE + coord.px) * 4;
+        const r = data[idx];
+        const g = data[idx + 1];
+        const b = data[idx + 2];
+        results[i] = (r * 256.0 + g + b / 256.0) - 32768.0;
+      } else {
+        results[i] = 0.0; // Fallback for ocean / missing data
+      }
+    }
+
+    return results;
   }
 
-  clearCache() {
-    this.cache.clear();
+  // Retain your existing samplePoint logic for the Inspector Tool
+  public async samplePoint(xM: number, yM: number, zoom: number): Promise<number> {
+    const arr = await this.sampleGrid(new Float64Array([xM]), new Float64Array([yM]), zoom);
+    return arr[0];
   }
 }
+

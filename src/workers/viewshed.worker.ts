@@ -22,7 +22,6 @@ const TWO_PI = 2.0 * Math.PI;
 const HIGH_ALTITUDE_ANALYTIC_THRESHOLD_M = 100_000.0;
 const DEFAULT_MAXIMUM_MVA_AGL_M = 60_000.0;
 const DEFAULT_MINIMUM_COLLECTOR_CLEARANCE_M = 10.0;
-const MVA_BISECTION_ITERATIONS = 18;
 const VISIBILITY_ALTITUDE_TOLERANCE_M = 0.25;
 const LOS_SURFACE_FLOOR_M = 0.0;
 
@@ -69,7 +68,6 @@ function mercatorXToLon(xM: number): number {
   return (xM / WEB_MERCATOR_R_M) * (180.0 / Math.PI);
 }
 
-// Helper to safely wrap continuous Web Mercator X for DEM fetching
 function wrapMercatorX(xM: number): number {
   const w = WEB_MERCATOR_WORLD_WIDTH_M;
   return ((((xM + w / 2) % w) + w) % w) - w / 2;
@@ -123,6 +121,7 @@ function surfaceDistanceM(
   return distances;
 }
 
+// Retained for the smaller Analysis Grid sweep mapping
 function elevationAngles(
   obsEcef: [number, number, number],
   collectorLatDeg: number,
@@ -148,42 +147,146 @@ function elevationAngles(
   return Math.atan2(vertical, Math.max(1.0, horizontal));
 }
 
-// Complete GEO ellipsoid bisection root-finding
-function segmentBlockedByEllipsoid(
-  obsEcef: [number, number, number],
+// ============================================================================
+// 2. FAST Dual Bisection MVA Solvers (Zero-Allocation)
+// ============================================================================
+
+function elevationAnglesFast(
+  obsX: number,
+  obsY: number,
+  obsZ: number,
+  upX: number,
+  upY: number,
+  upZ: number,
+  tX: number,
+  tY: number,
+  tZ: number
+): number {
+  const dX = tX - obsX;
+  const dY = tY - obsY;
+  const dZ = tZ - obsZ;
+  const vertical = dX * upX + dY * upY + dZ * upZ;
+  const sqRange = dX * dX + dY * dY + dZ * dZ;
+  const horizontal = Math.sqrt(Math.max(0.0, sqRange - vertical * vertical));
+  return Math.atan2(vertical, Math.max(1.0, horizontal));
+}
+
+function segmentBlockedByEllipsoidFast(
+  obsX: number,
+  obsY: number,
+  obsZ: number,
   targetX: number,
   targetY: number,
   targetZ: number
 ): boolean {
-  const deltaX = targetX - obsEcef[0];
-  const deltaY = targetY - obsEcef[1];
-  const deltaZ = targetZ - obsEcef[2];
-
   const polarRadiusM = WGS84_A_M * Math.sqrt(1.0 - WGS84_E2);
-  const px = obsEcef[0] / WGS84_A_M;
-  const py = obsEcef[1] / WGS84_A_M;
-  const pz = obsEcef[2] / polarRadiusM;
-  const dx = deltaX / WGS84_A_M;
-  const dy = deltaY / WGS84_A_M;
-  const dz = deltaZ / polarRadiusM;
+  const px = obsX / WGS84_A_M;
+  const py = obsY / WGS84_A_M;
+  const pz = obsZ / polarRadiusM;
 
-  const quadraticA = dx * dx + dy * dy + dz * dz;
-  const quadraticB = 2.0 * (px * dx + py * dy + pz * dz);
-  const quadraticC = px * px + py * py + pz * pz - 1.0;
-  const discriminant = quadraticB * quadraticB - 4.0 * quadraticA * quadraticC;
+  const dx = (targetX - obsX) / WGS84_A_M;
+  const dy = (targetY - obsY) / WGS84_A_M;
+  const dz = (targetZ - obsZ) / polarRadiusM;
+
+  const quadA = dx * dx + dy * dy + dz * dz;
+  const quadB = 2.0 * (px * dx + py * dy + pz * dz);
+  const quadC = px * px + py * py + pz * pz - 1.0;
+  const discriminant = quadB * quadB - 4.0 * quadA * quadC;
 
   if (discriminant < 0.0) return false;
 
   const rootSpan = Math.sqrt(discriminant);
-  const denominator = Math.max(2.0 * quadraticA, 1e-30);
-  const firstRoot = (-quadraticB - rootSpan) / denominator;
-  const secondRoot = (-quadraticB + rootSpan) / denominator;
+  const denominator = Math.max(2.0 * quadA, 1e-30);
+  const root1 = (-quadB - rootSpan) / denominator;
+  const root2 = (-quadB + rootSpan) / denominator;
   const eps = 1.0e-7;
 
   return (
-    (firstRoot > eps && firstRoot < 1.0 - eps) ||
-    (secondRoot > eps && secondRoot < 1.0 - eps)
+    (root1 > eps && root1 < 1.0 - eps) || (root2 > eps && root2 < 1.0 - eps)
   );
+}
+
+function mvaGeometricFast(
+  obsX: number,
+  obsY: number,
+  obsZ: number,
+  tRadius: number,
+  tRadiusE2: number,
+  tCosLatCosLon: number,
+  tCosLatSinLon: number,
+  tSinLat: number,
+  baseElev: number,
+  maxAgl: number
+): number {
+  let low = 0.0;
+  let high = maxAgl;
+
+  let x = (tRadius + baseElev) * tCosLatCosLon;
+  let y = (tRadius + baseElev) * tCosLatSinLon;
+  let z = (tRadiusE2 + baseElev) * tSinLat;
+  if (!segmentBlockedByEllipsoidFast(obsX, obsY, obsZ, x, y, z)) return 0.0;
+
+  x = (tRadius + baseElev + high) * tCosLatCosLon;
+  y = (tRadius + baseElev + high) * tCosLatSinLon;
+  z = (tRadiusE2 + baseElev + high) * tSinLat;
+  if (segmentBlockedByEllipsoidFast(obsX, obsY, obsZ, x, y, z)) return maxAgl;
+
+  for (let iter = 0; iter < 18; iter++) {
+    const mid = 0.5 * (low + high);
+    x = (tRadius + baseElev + mid) * tCosLatCosLon;
+    y = (tRadius + baseElev + mid) * tCosLatSinLon;
+    z = (tRadiusE2 + baseElev + mid) * tSinLat;
+    if (segmentBlockedByEllipsoidFast(obsX, obsY, obsZ, x, y, z)) low = mid;
+    else high = mid;
+  }
+  return high;
+}
+
+function mvaTerrainFast(
+  obsX: number,
+  obsY: number,
+  obsZ: number,
+  upX: number,
+  upY: number,
+  upZ: number,
+  tRadius: number,
+  tRadiusE2: number,
+  tCosLatCosLon: number,
+  tCosLatSinLon: number,
+  tSinLat: number,
+  baseElev: number,
+  reqAngle: number,
+  maxAgl: number
+): number {
+  let low = 0.0;
+  let high = maxAgl;
+
+  let x = (tRadius + baseElev) * tCosLatCosLon;
+  let y = (tRadius + baseElev) * tCosLatSinLon;
+  let z = (tRadiusE2 + baseElev) * tSinLat;
+  if (
+    elevationAnglesFast(obsX, obsY, obsZ, upX, upY, upZ, x, y, z) >= reqAngle
+  )
+    return 0.0;
+
+  x = (tRadius + baseElev + high) * tCosLatCosLon;
+  y = (tRadius + baseElev + high) * tCosLatSinLon;
+  z = (tRadiusE2 + baseElev + high) * tSinLat;
+  if (elevationAnglesFast(obsX, obsY, obsZ, upX, upY, upZ, x, y, z) < reqAngle)
+    return maxAgl;
+
+  for (let iter = 0; iter < 18; iter++) {
+    const mid = 0.5 * (low + high);
+    x = (tRadius + baseElev + mid) * tCosLatCosLon;
+    y = (tRadius + baseElev + mid) * tCosLatSinLon;
+    z = (tRadiusE2 + baseElev + mid) * tSinLat;
+    if (
+      elevationAnglesFast(obsX, obsY, obsZ, upX, upY, upZ, x, y, z) < reqAngle
+    )
+      low = mid;
+    else high = mid;
+  }
+  return high;
 }
 
 // ============================================================================
@@ -233,7 +336,7 @@ class Profiler {
 }
 
 // ============================================================================
-// 2. DEM Surface Sanitization & Batching
+// 3. DEM Surface Sanitization & Batching
 // ============================================================================
 function clampDemToVisibleSurface(elevationM: Float64Array) {
   const surface = new Float64Array(elevationM.length);
@@ -248,28 +351,9 @@ function clampDemToVisibleSurface(elevationM: Float64Array) {
 
 const terrainProvider = new TerrariumTerrainProvider();
 
-async function fetchBatchedTerrain(
-  xs: Float64Array,
-  ys: Float64Array,
-  zoom: number,
-  runId: number
-): Promise<Float64Array> {
-  const results = new Float64Array(xs.length);
-  const CHUNK_SIZE = 256;
-  for (let i = 0; i < xs.length; i += CHUNK_SIZE) {
-    await checkCancelAndYield(runId);
-    const promises = [];
-    const end = Math.min(i + CHUNK_SIZE, xs.length);
-    for (let j = i; j < end; j++)
-      promises.push(terrainProvider.samplePoint(xs[j], ys[j], zoom));
-    const chunkRes = await Promise.all(promises);
-    for (let j = 0; j < chunkRes.length; j++) results[i + j] = chunkRes[j];
-  }
-  return results;
-}
 
 // ============================================================================
-// 3. Observer-Inclusive Analysis Grid & Bilinear Expansion
+// 4. Observer-Inclusive Analysis Grid & Bilinear Expansion
 // ============================================================================
 function bilinearExpandRegularGrid(
   source: Float64Array,
@@ -412,7 +496,7 @@ function observerInclusiveAnalysisGrid(
 }
 
 // ============================================================================
-// 4. Async Chebyshev Ring Reference-Plane Sweep
+// 5. Async Chebyshev Ring Reference-Plane Sweep
 // ============================================================================
 async function gridHorizonSweep(
   angles: Float64Array,
@@ -541,125 +625,6 @@ async function gridHorizonSweep(
 }
 
 // ============================================================================
-// 5. Dual Bisection MVA Solvers
-// ============================================================================
-function minimumGeometricAltitudeAgl(
-  obsEcef: [number, number, number],
-  targetLatDeg: number,
-  targetLonDeg: number,
-  terrainElevationM: number,
-  maximumAglM: number
-): { mva: number; saturated: boolean } {
-  let lowAgl = 0.0;
-  let highAgl = maximumAglM;
-
-  const [lowX, lowY, lowZ] = geodeticToEcef(
-    targetLatDeg,
-    targetLonDeg,
-    terrainElevationM + lowAgl
-  );
-  if (!segmentBlockedByEllipsoid(obsEcef, lowX, lowY, lowZ))
-    return { mva: 0.0, saturated: false };
-
-  const [highX, highY, highZ] = geodeticToEcef(
-    targetLatDeg,
-    targetLonDeg,
-    terrainElevationM + highAgl
-  );
-  if (
-    segmentBlockedByEllipsoid(obsEcef, lowX, lowY, lowZ) &&
-    segmentBlockedByEllipsoid(obsEcef, highX, highY, highZ)
-  ) {
-    return { mva: maximumAglM, saturated: true };
-  }
-
-  for (let iter = 0; iter < MVA_BISECTION_ITERATIONS; iter++) {
-    const middleAgl = 0.5 * (lowAgl + highAgl);
-    const [midX, midY, midZ] = geodeticToEcef(
-      targetLatDeg,
-      targetLonDeg,
-      terrainElevationM + middleAgl
-    );
-    if (segmentBlockedByEllipsoid(obsEcef, midX, midY, midZ))
-      lowAgl = middleAgl;
-    else highAgl = middleAgl;
-  }
-  return { mva: highAgl, saturated: false };
-}
-
-function minimumAltitudeForHorizonAngle(
-  obsEcef: [number, number, number],
-  collectorLatDeg: number,
-  collectorLonDeg: number,
-  targetLatDeg: number,
-  targetLonDeg: number,
-  terrainElevationM: number,
-  requiredAngleRad: number,
-  maximumAglM: number
-): { mva: number; saturated: boolean } {
-  let lowAgl = 0.0;
-  let highAgl = maximumAglM;
-
-  const [lowX, lowY, lowZ] = geodeticToEcef(
-    targetLatDeg,
-    targetLonDeg,
-    terrainElevationM + lowAgl
-  );
-  if (
-    elevationAngles(
-      obsEcef,
-      collectorLatDeg,
-      collectorLonDeg,
-      lowX,
-      lowY,
-      lowZ
-    ) >= requiredAngleRad
-  ) {
-    return { mva: 0.0, saturated: false };
-  }
-
-  const [highX, highY, highZ] = geodeticToEcef(
-    targetLatDeg,
-    targetLonDeg,
-    terrainElevationM + highAgl
-  );
-  if (
-    elevationAngles(
-      obsEcef,
-      collectorLatDeg,
-      collectorLonDeg,
-      highX,
-      highY,
-      highZ
-    ) < requiredAngleRad
-  ) {
-    return { mva: maximumAglM, saturated: true };
-  }
-
-  for (let iter = 0; iter < MVA_BISECTION_ITERATIONS; iter++) {
-    const middleAgl = 0.5 * (lowAgl + highAgl);
-    const [midX, midY, midZ] = geodeticToEcef(
-      targetLatDeg,
-      targetLonDeg,
-      terrainElevationM + middleAgl
-    );
-    if (
-      elevationAngles(
-        obsEcef,
-        collectorLatDeg,
-        collectorLonDeg,
-        midX,
-        midY,
-        midZ
-      ) < requiredAngleRad
-    )
-      lowAgl = middleAgl;
-    else highAgl = middleAgl;
-  }
-  return { mva: highAgl, saturated: false };
-}
-
-// ============================================================================
 // Main Worker Execution & Message Processing
 // ============================================================================
 self.onmessage = async (event) => {
@@ -775,10 +740,11 @@ self.onmessage = async (event) => {
         profiler.end(`Observer ${idx} - GEO Target Geodesy`);
 
         profiler.start(`Observer ${idx} - Fetch GEO Target Terrain`);
-        const rawT = await fetchBatchedTerrain(reqX, reqY, zoom, runId);
+        const rawT = await terrainProvider.sampleGrid(reqX, reqY, zoom);
         viewportTerrains = clampDemToVisibleSurface(rawT).surface;
         profiler.end(`Observer ${idx} - Fetch GEO Target Terrain`);
 
+        viewportTerrains = clampDemToVisibleSurface(rawT).surface;
         viewportDistances = surfaceDistanceM(
           collectorLat,
           collectorLon,
@@ -818,11 +784,9 @@ self.onmessage = async (event) => {
         profiler.end(`Observer ${idx} - Analysis Grid Projection`);
 
         profiler.start(`Observer ${idx} - Fetch Analysis Terrain`);
-        const { surface: aTerrains } = clampDemToVisibleSurface(
-          await fetchBatchedTerrain(reqX, reqY, zoom, runId)
-        );
+        const rawAnalysisTerrains = await terrainProvider.sampleGrid(reqX, reqY, zoom);
+        const { surface: aTerrains } = clampDemToVisibleSurface(rawAnalysisTerrains);
         profiler.end(`Observer ${idx} - Fetch Analysis Terrain`);
-
         const aDist = surfaceDistanceM(collectorLat, collectorLon, aLat, aLon);
         const aAngles = new Float64Array(aNx * aNy);
         for (let i = 0; i < aAngles.length; i++) {
@@ -922,35 +886,77 @@ self.onmessage = async (event) => {
       profiler.start(`Observer ${idx} - Dual Bisection MVA Solvers`);
       const obsVisArray = new Uint8Array(numPixels);
       const obsMvaArray = new Float32Array(numPixels);
+
+      const obsLatRad = (collectorLat * Math.PI) / 180.0;
+      const obsLonRad = (collectorLon * Math.PI) / 180.0;
+      const upX = Math.cos(obsLatRad) * Math.cos(obsLonRad);
+      const upY = Math.cos(obsLatRad) * Math.sin(obsLonRad);
+      const upZ = Math.sin(obsLatRad);
+
       for (let r = 0; r < outputRows; r++) {
         if (r % 32 === 0) await checkCancelAndYield(runId);
         const gridRow = outputRows - 1 - r;
+
         for (let c = 0; c < outputCols; c++) {
           const mapIdx = gridRow * (outputCols + 1) + c;
           const pixelIdx = r * outputCols + c;
 
-          const mvaGeo = minimumGeometricAltitudeAgl(
-            obsEcef,
-            viewportLatArr[mapIdx],
-            viewportLonArr[mapIdx],
-            viewportTerrains[mapIdx],
-            DEFAULT_MAXIMUM_MVA_AGL_M
-          ).mva;
-          const mvaTer = minimumAltitudeForHorizonAngle(
-            obsEcef,
-            collectorLat,
-            collectorLon,
-            viewportLatArr[mapIdx],
-            viewportLonArr[mapIdx],
-            viewportTerrains[mapIdx],
-            viewportHorizonBefore[mapIdx],
-            DEFAULT_MAXIMUM_MVA_AGL_M
-          ).mva;
+          const distM = viewportDistances[mapIdx];
+          const terrainM = viewportTerrains[mapIdx];
+          const lat = viewportLatArr[mapIdx];
+          const lon = viewportLonArr[mapIdx];
+          const requiredAngle = viewportHorizonBefore[mapIdx];
 
-          const effectiveMva =
-            viewportDistances[mapIdx] <= grid.cellXM * 0.5
-              ? 0.0
-              : Math.max(mvaGeo, mvaTer);
+          if (distM <= grid.cellXM * 0.5) {
+            obsMvaArray[pixelIdx] = 0.0;
+            obsVisArray[pixelIdx] = 1;
+            continue;
+          }
+
+          const tLatR = (lat * Math.PI) / 180.0;
+          const tLonR = (lon * Math.PI) / 180.0;
+          const tSinLat = Math.sin(tLatR);
+          const tCosLat = Math.cos(tLatR);
+          const tSinLon = Math.sin(tLonR);
+          const tCosLon = Math.cos(tLonR);
+
+          const tRadius =
+            WGS84_A_M / Math.sqrt(1.0 - WGS84_E2 * tSinLat * tSinLat);
+          const tRadiusE2 = tRadius * (1.0 - WGS84_E2);
+          const tCosLatCosLon = tCosLat * tCosLon;
+          const tCosLatSinLon = tCosLat * tSinLon;
+
+          const mvaGeo = mvaGeometricFast(
+            obsEcef[0],
+            obsEcef[1],
+            obsEcef[2],
+            tRadius,
+            tRadiusE2,
+            tCosLatCosLon,
+            tCosLatSinLon,
+            tSinLat,
+            terrainM,
+            DEFAULT_MAXIMUM_MVA_AGL_M
+          );
+
+          const mvaTer = mvaTerrainFast(
+            obsEcef[0],
+            obsEcef[1],
+            obsEcef[2],
+            upX,
+            upY,
+            upZ,
+            tRadius,
+            tRadiusE2,
+            tCosLatCosLon,
+            tCosLatSinLon,
+            tSinLat,
+            terrainM,
+            requiredAngle,
+            DEFAULT_MAXIMUM_MVA_AGL_M
+          );
+
+          const effectiveMva = Math.max(mvaGeo, mvaTer);
           obsMvaArray[pixelIdx] = effectiveMva;
           obsVisArray[pixelIdx] =
             targetHeightM + VISIBILITY_ALTITUDE_TOLERANCE_M >= effectiveMva
