@@ -1,10 +1,9 @@
 /**
  * TypeScript Web Worker for Terrain Line-of-Sight & MVA Viewshed.
- * Fully verified, uncompromised 1-to-1 verbose port of geoanalysis.viewshed.solver (VisibilitySolver).
+ * Faithful, uncompromised 1-to-1 port of geoanalysis.viewshed.solver (VisibilitySolver).
  */
 
 import {
-  planBufferedViewportRasterGrid,
   lonToMercatorX,
   latToMercatorY,
   WGS84_A_M,
@@ -14,17 +13,13 @@ import {
 import { TerrariumTerrainProvider, terrainZoomForSpacing } from "./terrain";
 
 // ============================================================================
-// Constants & Mathematical Definitions
+// 1. WGS84 Constants & Geodesy / Coordinate Transformations
 // ============================================================================
-
 const WGS84_F = 1.0 / 298.257223563;
 const WGS84_E2 = WGS84_F * (2.0 - WGS84_F);
 const WEB_MERCATOR_R_M = WGS84_A_M;
 const TWO_PI = 2.0 * Math.PI;
 const HIGH_ALTITUDE_ANALYTIC_THRESHOLD_M = 100_000.0;
-const GEO_MINIMUM_PROFILE_SAMPLES = 4;
-const GEO_MAXIMUM_PROFILE_SAMPLES = 1024;
-const GEO_TERRAIN_CLEARANCE_M = 10_000.0;
 const DEFAULT_MAXIMUM_MVA_AGL_M = 60_000.0;
 const DEFAULT_MINIMUM_COLLECTOR_CLEARANCE_M = 10.0;
 const MVA_BISECTION_ITERATIONS = 18;
@@ -36,16 +31,6 @@ export interface CollectorState {
   kind: "ground" | "airborne" | "geo";
   positionEcefM: [number, number, number];
   altitudeM?: number;
-}
-
-export interface GridSweepResult {
-  horizonBeforeRad: Float64Array;
-  controllingBlockerDistanceM: Float32Array;
-  observerRow: number;
-  observerColumn: number;
-  observerSnapDistanceM: number;
-  ringCount: number;
-  processedCells: number;
 }
 
 export interface AnalysisGrid {
@@ -63,9 +48,15 @@ export interface AnalysisGrid {
   extended: boolean;
 }
 
-// ============================================================================
-// Geodesy & Coordinate Transformations
-// ============================================================================
+export interface GridSweepResult {
+  horizonBeforeRad: Float64Array;
+  controllingBlockerDistanceM: Float64Array;
+  observerRow: number;
+  observerColumn: number;
+  observerSnapDistanceM: number;
+  ringCount: number;
+  processedCells: number;
+}
 
 function mercatorYToLat(yM: number): number {
   return (
@@ -78,62 +69,10 @@ function mercatorXToLon(xM: number): number {
   return (xM / WEB_MERCATOR_R_M) * (180.0 / Math.PI);
 }
 
-function ecefToGeodeticArrays(
-  xM: Float64Array,
-  yM: Float64Array,
-  zM: Float64Array
-): {
-  latitudeDeg: Float64Array;
-  longitudeDeg: Float64Array;
-  altitudeM: Float64Array;
-} {
-  const size = xM.length;
-  const latitude = new Float64Array(size);
-  const longitude = new Float64Array(size);
-  const altitude = new Float64Array(size);
-
-  const polarRadiusM = WGS84_A_M * Math.sqrt(1.0 - WGS84_E2);
-  const secondEccentricitySquared =
-    (WGS84_A_M * WGS84_A_M - polarRadiusM * polarRadiusM) /
-    (polarRadiusM * polarRadiusM);
-
-  for (let i = 0; i < size; i++) {
-    const x = xM[i];
-    const y = yM[i];
-    const z = zM[i];
-
-    longitude[i] = Math.atan2(y, x) * (180.0 / Math.PI);
-    const horizontal = Math.hypot(x, y);
-
-    const auxiliaryAngle = Math.atan2(
-      z * WGS84_A_M,
-      horizontal * polarRadiusM
-    );
-    const sinAux = Math.sin(auxiliaryAngle);
-    const cosAux = Math.cos(auxiliaryAngle);
-
-    const latRad = Math.atan2(
-      z + secondEccentricitySquared * polarRadiusM * sinAux * sinAux * sinAux,
-      horizontal - WGS84_E2 * WGS84_A_M * cosAux * cosAux * cosAux
-    );
-    latitude[i] = latRad * (180.0 / Math.PI);
-
-    const sinLat = Math.sin(latRad);
-    const radius = WGS84_A_M / Math.sqrt(1.0 - WGS84_E2 * sinLat * sinLat);
-    const cosLat = Math.cos(latRad);
-
-    if (Math.abs(cosLat) > 1.0e-12) {
-      altitude[i] = horizontal / cosLat - radius;
-    } else {
-      altitude[i] = Math.abs(z) - polarRadiusM;
-    }
-  }
-
-  return {
-    latitudeDeg: latitude,
-    longitudeDeg: longitude,
-    altitudeM: altitude,
-  };
+// Helper to safely wrap continuous Web Mercator X for DEM fetching
+function wrapMercatorX(xM: number): number {
+  const w = WEB_MERCATOR_WORLD_WIDTH_M;
+  return ((((xM + w / 2) % w) + w) % w) - w / 2;
 }
 
 function geodeticToEcef(
@@ -209,593 +148,7 @@ function elevationAngles(
   return Math.atan2(vertical, Math.max(1.0, horizontal));
 }
 
-// ============================================================================
-// DEM Surface Clamping & Sanitization
-// ============================================================================
-
-function clampDemToVisibleSurface(elevationM: Float64Array): {
-  surface: Float64Array;
-  negativeCount: number;
-  nonfiniteCount: number;
-  rawMinM: number;
-  rawMaxM: number;
-} {
-  let negativeCount = 0;
-  let nonfiniteCount = 0;
-  let rawMinM = Infinity;
-  let rawMaxM = -Infinity;
-
-  const surface = new Float64Array(elevationM.length);
-
-  for (let i = 0; i < elevationM.length; i++) {
-    const val = elevationM[i];
-    const finite = Number.isFinite(val);
-    if (!finite) {
-      nonfiniteCount++;
-      surface[i] = LOS_SURFACE_FLOOR_M;
-      continue;
-    }
-    if (val < LOS_SURFACE_FLOOR_M) {
-      negativeCount++;
-    }
-    if (val < rawMinM) rawMinM = val;
-    if (val > rawMaxM) rawMaxM = val;
-
-    surface[i] = Math.max(val, LOS_SURFACE_FLOOR_M);
-  }
-
-  if (rawMinM === Infinity) {
-    rawMinM = NaN;
-    rawMaxM = NaN;
-  }
-
-  return { surface, negativeCount, nonfiniteCount, rawMinM, rawMaxM };
-}
-
-// ============================================================================
-// Observer-Inclusive Analysis Grid & Bilinear Expansion
-// ============================================================================
-
-function bilinearExpandRegularGrid(
-  source: Float64Array,
-  sourceRows: number,
-  sourceCols: number,
-  outputRows: number,
-  outputCols: number,
-  rowPositions?: Float64Array,
-  colPositions?: Float64Array
-): Float64Array {
-  if (sourceRows === outputRows && sourceCols === outputCols) {
-    return new Float64Array(source);
-  }
-
-  const srcX =
-    colPositions ||
-    new Float64Array(sourceCols).map(
-      (_, i) => (i * (outputCols - 1)) / (sourceCols - 1)
-    );
-  const srcY =
-    rowPositions ||
-    new Float64Array(sourceRows).map(
-      (_, i) => (i * (outputRows - 1)) / (sourceRows - 1)
-    );
-
-  const horizontal = new Float64Array(sourceRows * outputCols);
-  for (let r = 0; r < sourceRows; r++) {
-    for (let cOut = 0; cOut < outputCols; cOut++) {
-      const x = cOut;
-      let idx0 = 0;
-      while (idx0 < sourceCols - 1 && srcX[idx0 + 1] <= x) idx0++;
-      const idx1 = Math.min(sourceCols - 1, idx0 + 1);
-
-      const x0 = srcX[idx0];
-      const x1 = srcX[idx1];
-      const weight = x1 === x0 ? 0.0 : (x - x0) / (x1 - x0);
-
-      const val0 = source[r * sourceCols + idx0];
-      const val1 = source[r * sourceCols + idx1];
-      horizontal[r * outputCols + cOut] =
-        (1.0 - weight) * val0 + weight * val1;
-    }
-  }
-
-  const expanded = new Float64Array(outputRows * outputCols);
-  for (let cOut = 0; cOut < outputCols; cOut++) {
-    for (let rOut = 0; rOut < outputRows; rOut++) {
-      const y = rOut;
-      let idx0 = 0;
-      while (idx0 < sourceRows - 1 && srcY[idx0 + 1] <= y) idx0++;
-      const idx1 = Math.min(sourceRows - 1, idx0 + 1);
-
-      const y0 = srcY[idx0];
-      const y1 = srcY[idx1];
-      const weight = y1 === y0 ? 0.0 : (y - y0) / (y1 - y0);
-
-      const val0 = horizontal[idx0 * outputCols + cOut];
-      const val1 = horizontal[idx1 * outputCols + cOut];
-      expanded[rOut * outputCols + cOut] =
-        (1.0 - weight) * val0 + weight * val1;
-    }
-  }
-
-  return expanded;
-}
-
-function observerInclusiveAnalysisGrid(
-  outputGrid: GridSpec,
-  observerLatDeg: number,
-  observerLonDeg: number,
-  maximumCells: number
-): AnalysisGrid {
-  const outputRows = outputGrid.ny - 1;
-  const outputColumns = outputGrid.nx - 1;
-  const cellXM = outputGrid.cellXM;
-  const cellYM = outputGrid.cellYM;
-  const firstCenterX = outputGrid.xMinM + 0.5 * cellXM;
-  const firstCenterY = outputGrid.yMinM + 0.5 * cellYM;
-
-  let observerX = lonToMercatorX(observerLonDeg);
-  const gridCenterX = 0.5 * (outputGrid.xMinM + outputGrid.xMaxM);
-  observerX +=
-    Math.round((gridCenterX - observerX) / WEB_MERCATOR_WORLD_WIDTH_M) *
-    WEB_MERCATOR_WORLD_WIDTH_M;
-  const observerY = latToMercatorY(observerLatDeg);
-
-  const observerCol = (observerX - firstCenterX) / cellXM;
-  const observerRow = (observerY - firstCenterY) / cellYM;
-
-  const minCol = Math.min(0, Math.floor(observerCol));
-  const maxCol = Math.max(outputColumns - 1, Math.ceil(observerCol));
-  const minRow = Math.min(0, Math.floor(observerRow));
-  const maxRow = Math.max(outputRows - 1, Math.ceil(observerRow));
-
-  const maxCells = Math.max(1024, Math.floor(maximumCells));
-  let scale = 1;
-
-  const getLimits = (s: number) => {
-    const fCol = Math.floor(minCol / s) * s;
-    const lCol = Math.ceil(maxCol / s) * s;
-    const fRow = Math.floor(minRow / s) * s;
-    const lRow = Math.ceil(maxRow / s) * s;
-    const cols = Math.floor((lCol - fCol) / s) + 1;
-    const rows = Math.floor((lRow - fRow) / s) + 1;
-    return { fRow, lRow, fCol, lCol, rows, cols };
-  };
-
-  const unscaledCells = (maxRow - minRow + 1) * (maxCol - minCol + 1);
-  scale = Math.max(1, Math.ceil(Math.sqrt(unscaledCells / maxCells)));
-  let limits = getLimits(scale);
-  while (limits.rows * limits.cols > maxCells) {
-    scale++;
-    limits = getLimits(scale);
-  }
-
-  const analysisCellX = cellXM * scale;
-  const analysisCellY = cellYM * scale;
-  const analysisFirstX = firstCenterX + limits.fCol * cellXM;
-  const analysisFirstY = firstCenterY + limits.fRow * cellYM;
-  const analysisLastX = firstCenterX + limits.lCol * cellXM;
-  const analysisLastY = firstCenterY + limits.lRow * cellYM;
-
-  const sourceRowPositions = new Float64Array(limits.rows).map(
-    (_, i) => limits.fRow + i * scale
-  );
-  const sourceColumnPositions = new Float64Array(limits.cols).map(
-    (_, i) => limits.fCol + i * scale
-  );
-
-  return {
-    xMinM: analysisFirstX - 0.5 * analysisCellX,
-    yMinM: analysisFirstY - 0.5 * analysisCellY,
-    xMaxM: analysisLastX + 0.5 * analysisCellX,
-    yMaxM: analysisLastY + 0.5 * analysisCellY,
-    nx: limits.cols + 1,
-    ny: limits.rows + 1,
-    cellXM: analysisCellX,
-    cellYM: analysisCellY,
-    sourceRowPositions,
-    sourceColumnPositions,
-    scale,
-    extended:
-      limits.fRow !== 0 ||
-      limits.lRow !== outputRows - 1 ||
-      limits.fCol !== 0 ||
-      limits.lCol !== outputColumns - 1,
-  };
-}
-
-// ============================================================================
-// Chebyshev Ring Reference-Plane Sweep
-// ============================================================================
-
-function gridHorizonSweep(
-  angles: Float64Array,
-  distances: Float64Array,
-  rows: number,
-  columns: number,
-  obsRow: number,
-  obsCol: number
-): GridSweepResult {
-  const inclusive = new Float64Array(rows * columns).fill(-Infinity);
-  const horizonBefore = new Float64Array(rows * columns).fill(-Infinity);
-  const sourceDistance = new Float64Array(rows * columns).fill(0);
-  inclusive[obsRow * columns + obsCol] = -Infinity;
-
-  const maximumRing = Math.max(
-    obsRow,
-    rows - 1 - obsRow,
-    obsCol,
-    columns - 1 - obsCol
-  );
-  let processedCells = 1;
-
-  for (let ring = 1; ring <= maximumRing; ring++) {
-    const minCol = Math.max(0, obsCol - ring);
-    const maxCol = Math.min(columns - 1, obsCol + ring);
-
-    for (const r of [obsRow - ring, obsRow + ring]) {
-      if (r >= 0 && r < rows) {
-        const predecessorRow = Math.max(
-          0,
-          Math.min(rows - 1, obsRow + Math.sign(r - obsRow) * (ring - 1))
-        );
-        for (let c = minCol; c <= maxCol; c++) {
-          processedCells++;
-          const idx = r * columns + c;
-          const predecessorColumnFloat =
-            obsCol + (c - obsCol) * ((ring - 1) / ring);
-          const c0 = Math.floor(predecessorColumnFloat);
-          const c1 = Math.min(columns - 1, c0 + 1);
-          const weight = predecessorColumnFloat - c0;
-
-          const pIdx0 =
-            predecessorRow * columns + Math.max(0, Math.min(columns - 1, c0));
-          const pIdx1 =
-            predecessorRow * columns + Math.max(0, Math.min(columns - 1, c1));
-
-          const angle0 = inclusive[pIdx0];
-          const angle1 = inclusive[pIdx1];
-          const dist0 = sourceDistance[pIdx0];
-          const dist1 = sourceDistance[pIdx1];
-
-          let prevAngle = -Infinity;
-          let prevDist = 0;
-          const f0 = Number.isFinite(angle0);
-          const f1 = Number.isFinite(angle1);
-
-          if (f0 && f1) {
-            prevAngle = (1.0 - weight) * angle0 + weight * angle1;
-            prevDist = angle0 >= angle1 ? dist0 : dist1;
-          } else if (f0) {
-            prevAngle = angle0;
-            prevDist = dist0;
-          } else if (f1) {
-            prevAngle = angle1;
-            prevDist = dist1;
-          }
-
-          const curAngle = angles[idx];
-          horizonBefore[idx] = prevAngle;
-          const curWins = curAngle > prevAngle;
-          inclusive[idx] = Math.max(prevAngle, curAngle);
-          sourceDistance[idx] = curWins ? distances[idx] : prevDist;
-        }
-      }
-    }
-
-    const minRow = Math.max(0, obsRow - ring + 1);
-    const maxRow = Math.min(rows - 1, obsRow + ring - 1);
-    for (const c of [obsCol - ring, obsCol + ring]) {
-      if (c >= 0 && c < columns) {
-        const predecessorColumn = Math.max(
-          0,
-          Math.min(columns - 1, obsCol + Math.sign(c - obsCol) * (ring - 1))
-        );
-        for (let r = minRow; r <= maxRow; r++) {
-          processedCells++;
-          const idx = r * columns + c;
-          const predecessorRowFloat =
-            obsRow + (r - obsRow) * ((ring - 1) / ring);
-          const r0 = Math.floor(predecessorRowFloat);
-          const r1 = Math.min(rows - 1, r0 + 1);
-          const weight = predecessorRowFloat - r0;
-
-          const pIdx0 =
-            Math.max(0, Math.min(rows - 1, r0)) * columns + predecessorColumn;
-          const pIdx1 =
-            Math.max(0, Math.min(rows - 1, r1)) * columns + predecessorColumn;
-
-          const angle0 = inclusive[pIdx0];
-          const angle1 = inclusive[pIdx1];
-          const dist0 = sourceDistance[pIdx0];
-          const dist1 = sourceDistance[pIdx1];
-
-          let prevAngle = -Infinity;
-          let prevDist = 0;
-          const f0 = Number.isFinite(angle0);
-          const f1 = Number.isFinite(angle1);
-
-          if (f0 && f1) {
-            prevAngle = (1.0 - weight) * angle0 + weight * angle1;
-            prevDist = angle0 >= angle1 ? dist0 : dist1;
-          } else if (f0) {
-            prevAngle = angle0;
-            prevDist = dist0;
-          } else if (f1) {
-            prevAngle = angle1;
-            prevDist = dist1;
-          }
-
-          const curAngle = angles[idx];
-          horizonBefore[idx] = prevAngle;
-          const curWins = curAngle > prevAngle;
-          inclusive[idx] = Math.max(prevAngle, curAngle);
-          sourceDistance[idx] = curWins ? distances[idx] : prevDist;
-        }
-      }
-    }
-  }
-
-  horizonBefore[obsRow * columns + obsCol] = -Infinity;
-  return {
-    horizonBeforeRad: horizonBefore,
-    controllingBlockerDistanceM: sourceDistance,
-    observerRow: obsRow,
-    observerColumn: obsCol,
-    observerSnapDistanceM: 0.0,
-    ringCount: maximumRing,
-    processedCells,
-  };
-}
-
-// ============================================================================
-// Dual Bisection MVA Solvers & High-Altitude / GEO Ray Tracing
-// ============================================================================
-
-function minimumGeometricAltitudeAgl(
-  obsEcef: [number, number, number],
-  targetLatDeg: number,
-  targetLonDeg: number,
-  terrainElevationM: number,
-  maximumAglM: number
-): { mva: number; saturated: boolean } {
-  let lowAgl = 0.0;
-  let highAgl = maximumAglM;
-
-  const [lowX, lowY, lowZ] = geodeticToEcef(
-    targetLatDeg,
-    targetLonDeg,
-    terrainElevationM + lowAgl
-  );
-  const blockedLow = segmentBlockedByEllipsoid(obsEcef, lowX, lowY, lowZ);
-  if (!blockedLow) {
-    return { mva: 0.0, saturated: false };
-  }
-
-  const [highX, highY, highZ] = geodeticToEcef(
-    targetLatDeg,
-    targetLonDeg,
-    terrainElevationM + highAgl
-  );
-  const blockedHigh = segmentBlockedByEllipsoid(obsEcef, highX, highY, highZ);
-
-  if (blockedLow && blockedHigh) {
-    return { mva: maximumAglM, saturated: true };
-  }
-
-  for (let iter = 0; iter < MVA_BISECTION_ITERATIONS; iter++) {
-    const middleAgl = 0.5 * (lowAgl + highAgl);
-    const [midX, midY, midZ] = geodeticToEcef(
-      targetLatDeg,
-      targetLonDeg,
-      terrainElevationM + middleAgl
-    );
-    const blockedMiddle = segmentBlockedByEllipsoid(obsEcef, midX, midY, midZ);
-
-    if (blockedMiddle) {
-      lowAgl = middleAgl;
-    } else {
-      highAgl = middleAgl;
-    }
-  }
-
-  return { mva: highAgl, saturated: false };
-}
-
-function minimumAltitudeForHorizonAngle(
-  obsEcef: [number, number, number],
-  collectorLatDeg: number,
-  collectorLonDeg: number,
-  targetLatDeg: number,
-  targetLonDeg: number,
-  terrainElevationM: number,
-  requiredAngleRad: number,
-  maximumAglM: number
-): { mva: number; saturated: boolean } {
-  let lowAgl = 0.0;
-  let highAgl = maximumAglM;
-
-  const [lowX, lowY, lowZ] = geodeticToEcef(
-    targetLatDeg,
-    targetLonDeg,
-    terrainElevationM + lowAgl
-  );
-  const lowAngle = elevationAngles(
-    obsEcef,
-    collectorLatDeg,
-    collectorLonDeg,
-    lowX,
-    lowY,
-    lowZ
-  );
-  if (lowAngle >= requiredAngleRad) {
-    return { mva: 0.0, saturated: false };
-  }
-
-  const [highX, highY, highZ] = geodeticToEcef(
-    targetLatDeg,
-    targetLonDeg,
-    terrainElevationM + highAgl
-  );
-  const highAngle = elevationAngles(
-    obsEcef,
-    collectorLatDeg,
-    collectorLonDeg,
-    highX,
-    highY,
-    highZ
-  );
-  if (highAngle < requiredAngleRad) {
-    return { mva: maximumAglM, saturated: true };
-  }
-
-  for (let iter = 0; iter < MVA_BISECTION_ITERATIONS; iter++) {
-    const middleAgl = 0.5 * (lowAgl + highAgl);
-    const [midX, midY, midZ] = geodeticToEcef(
-      targetLatDeg,
-      targetLonDeg,
-      terrainElevationM + middleAgl
-    );
-    const midAngle = elevationAngles(
-      obsEcef,
-      collectorLatDeg,
-      collectorLonDeg,
-      midX,
-      midY,
-      midZ
-    );
-
-    if (midAngle < requiredAngleRad) {
-      lowAgl = middleAgl;
-    } else {
-      highAgl = middleAgl;
-    }
-  }
-
-  return { mva: highAgl, saturated: false };
-}
-
-async function geoRayTerrainHorizon(
-  collectorEcef: [number, number, number],
-  collectorLatDeg: number,
-  collectorLonDeg: number,
-  targetLatDeg: Float64Array,
-  targetLonDeg: Float64Array,
-  targetSurface: Float64Array,
-  geometricMva: Float64Array,
-  zoom: number,
-  obstructionHeightAglM: number
-): Promise<Float64Array> {
-  const size = targetLatDeg.length;
-  const horizon = new Float64Array(size).fill(-Infinity);
-
-  const polarRadiusM = WGS84_A_M * Math.sqrt(1.0 - WGS84_E2);
-  const clearanceCeilingM = GEO_TERRAIN_CLEARANCE_M + obstructionHeightAglM;
-  const clearanceScaleX = WGS84_A_M + clearanceCeilingM;
-  const clearanceScaleY = WGS84_A_M + clearanceCeilingM;
-  const clearanceScaleZ = polarRadiusM + clearanceCeilingM;
-
-  for (let i = 0; i < size; i++) {
-    if (geometricMva[i] > VISIBILITY_ALTITUDE_TOLERANCE_M) {
-      continue;
-    }
-
-    const tLat = targetLatDeg[i];
-    const tLon = targetLonDeg[i];
-    const tSurf = targetSurface[i];
-    const [tX, tY, tZ] = geodeticToEcef(tLat, tLon, tSurf);
-
-    const dirX = collectorEcef[0] - tX;
-    const dirY = collectorEcef[1] - tY;
-    const dirZ = collectorEcef[2] - tZ;
-
-    const normTX = tX / clearanceScaleX;
-    const normTY = tY / clearanceScaleY;
-    const normTZ = tZ / clearanceScaleZ;
-    const normDirX = dirX / clearanceScaleX;
-    const normDirY = dirY / clearanceScaleY;
-    const normDirZ = dirZ / clearanceScaleZ;
-
-    const qa = normDirX * normDirX + normDirY * normDirY + normDirZ * normDirZ;
-    const qb =
-      2.0 * (normTX * normDirX + normTY * normDirY + normTZ * normDirZ);
-    const qc = normTX * normTX + normTY * normTY + normTZ * normTZ - 1.0;
-
-    const disc = qb * qb - 4.0 * qa * qc;
-    const maxProg =
-      qa === 0.0
-        ? 1.0
-        : Math.min(
-            1.0,
-            Math.max(0.0, (-qb + Math.sqrt(Math.max(0.0, disc))) / (2.0 * qa))
-          );
-
-    const sampleCount = Math.max(
-      GEO_MINIMUM_PROFILE_SAMPLES,
-      Math.min(GEO_MAXIMUM_PROFILE_SAMPLES, 16)
-    );
-
-    let maxAngle = -Infinity;
-    for (let s = 1; s < sampleCount; s++) {
-      const frac = (s / (sampleCount - 1)) * maxProg;
-      const sampleX = tX + frac * dirX;
-      const sampleY = tY + frac * dirY;
-      const sampleZ = tZ + frac * dirZ;
-
-      const geo = ecefToGeodeticArrays(
-        new Float64Array([sampleX]),
-        new Float64Array([sampleY]),
-        new Float64Array([sampleZ])
-      );
-      const sLat = geo.latitudeDeg[0];
-      const sLon = geo.longitudeDeg[0];
-      const sElev = Math.max(
-        0.0,
-        await terrainProvider.samplePoint(
-          lonToMercatorX(sLon),
-          latToMercatorY(sLat),
-          zoom
-        )
-      );
-
-      const [blockX, blockY, blockZ] = geodeticToEcef(
-        sLat,
-        sLon,
-        sElev + obstructionHeightAglM
-      );
-      const angle = elevationAngles(
-        collectorEcef,
-        collectorLatDeg,
-        collectorLonDeg,
-        blockX,
-        blockY,
-        blockZ
-      );
-      if (angle > maxAngle) {
-        maxAngle = angle;
-      }
-    }
-    horizon[i] = maxAngle;
-  }
-  return horizon;
-}
-
-//=============================================================================
-// Worker Execution Orchestration
-// ============================================================================
-
-const terrainProvider = new TerrariumTerrainProvider();
-// ============================================================================
-// Main Worker Execution & Message Processing
-// ============================================================================
-//
-// Add this helper to wrap Web Mercator X to the standard [-20037508.34, 20037508.34] range
-function wrapMercatorX(xM: number): number {
-  const w = WEB_MERCATOR_WORLD_WIDTH_M;
-  return ((((xM + w / 2) % w) + w) % w) - w / 2;
-}
-
-// Ensure the GEO ellipsoid blockage math is fully defined
+// Complete GEO ellipsoid bisection root-finding
 function segmentBlockedByEllipsoid(
   obsEcef: [number, number, number],
   targetX: number,
@@ -832,16 +185,491 @@ function segmentBlockedByEllipsoid(
     (secondRoot > eps && secondRoot < 1.0 - eps)
   );
 }
+
+// ============================================================================
+// Profiling & Cooperative Cancellation State
+// ============================================================================
+let latestRunId = -1;
+let lastYieldTime = 0;
+
+async function checkCancelAndYield(currentRunId: number) {
+  if (latestRunId !== currentRunId) throw new Error("CANCELLED");
+  const now = performance.now();
+  if (now - lastYieldTime > 40) {
+    await new Promise((r) => setTimeout(r, 0));
+    if (latestRunId !== currentRunId) throw new Error("CANCELLED");
+    lastYieldTime = performance.now();
+  }
+}
+
+class Profiler {
+  private marks = new Map<string, number>();
+  private totals = new Map<string, number>();
+
+  start(label: string) {
+    this.marks.set(label, performance.now());
+  }
+  end(label: string) {
+    const start = this.marks.get(label);
+    if (start) {
+      this.totals.set(
+        label,
+        (this.totals.get(label) || 0) + (performance.now() - start)
+      );
+    }
+  }
+  print(runId: number) {
+    console.group(`⏱️ Viewshed Profiler (Run ${runId})`);
+    const table: any = {};
+    let total = 0;
+    this.totals.forEach((time, label) => {
+      table[label] = { "Time (ms)": time.toFixed(2) };
+      total += time;
+    });
+    table["Total Execution"] = { "Time (ms)": total.toFixed(2) };
+    console.table(table);
+    console.groupEnd();
+  }
+}
+
+// ============================================================================
+// 2. DEM Surface Sanitization & Batching
+// ============================================================================
+function clampDemToVisibleSurface(elevationM: Float64Array) {
+  const surface = new Float64Array(elevationM.length);
+  for (let i = 0; i < elevationM.length; i++) {
+    surface[i] = Math.max(
+      Number.isFinite(elevationM[i]) ? elevationM[i] : LOS_SURFACE_FLOOR_M,
+      LOS_SURFACE_FLOOR_M
+    );
+  }
+  return { surface };
+}
+
+const terrainProvider = new TerrariumTerrainProvider();
+
+async function fetchBatchedTerrain(
+  xs: Float64Array,
+  ys: Float64Array,
+  zoom: number,
+  runId: number
+): Promise<Float64Array> {
+  const results = new Float64Array(xs.length);
+  const CHUNK_SIZE = 256;
+  for (let i = 0; i < xs.length; i += CHUNK_SIZE) {
+    await checkCancelAndYield(runId);
+    const promises = [];
+    const end = Math.min(i + CHUNK_SIZE, xs.length);
+    for (let j = i; j < end; j++)
+      promises.push(terrainProvider.samplePoint(xs[j], ys[j], zoom));
+    const chunkRes = await Promise.all(promises);
+    for (let j = 0; j < chunkRes.length; j++) results[i + j] = chunkRes[j];
+  }
+  return results;
+}
+
+// ============================================================================
+// 3. Observer-Inclusive Analysis Grid & Bilinear Expansion
+// ============================================================================
+function bilinearExpandRegularGrid(
+  source: Float64Array,
+  sourceRows: number,
+  sourceCols: number,
+  outputRows: number,
+  outputCols: number,
+  rowPositions?: Float64Array,
+  colPositions?: Float64Array
+): Float64Array {
+  if (sourceRows === outputRows && sourceCols === outputCols)
+    return new Float64Array(source);
+  const srcX =
+    colPositions ||
+    new Float64Array(sourceCols).map(
+      (_, i) => (i * (outputCols - 1)) / (sourceCols - 1)
+    );
+  const srcY =
+    rowPositions ||
+    new Float64Array(sourceRows).map(
+      (_, i) => (i * (outputRows - 1)) / (sourceRows - 1)
+    );
+  const horizontal = new Float64Array(sourceRows * outputCols);
+  for (let r = 0; r < sourceRows; r++) {
+    for (let cOut = 0; cOut < outputCols; cOut++) {
+      const x = cOut;
+      let idx0 = 0;
+      while (idx0 < sourceCols - 1 && srcX[idx0 + 1] <= x) idx0++;
+      const idx1 = Math.min(sourceCols - 1, idx0 + 1);
+      const weight =
+        srcX[idx1] === srcX[idx0]
+          ? 0.0
+          : (x - srcX[idx0]) / (srcX[idx1] - srcX[idx0]);
+      horizontal[r * outputCols + cOut] =
+        (1.0 - weight) * source[r * sourceCols + idx0] +
+        weight * source[r * sourceCols + idx1];
+    }
+  }
+  const expanded = new Float64Array(outputRows * outputCols);
+  for (let cOut = 0; cOut < outputCols; cOut++) {
+    for (let rOut = 0; rOut < outputRows; rOut++) {
+      const y = rOut;
+      let idx0 = 0;
+      while (idx0 < sourceRows - 1 && srcY[idx0 + 1] <= y) idx0++;
+      const idx1 = Math.min(sourceRows - 1, idx0 + 1);
+      const weight =
+        srcY[idx1] === srcY[idx0]
+          ? 0.0
+          : (y - srcY[idx0]) / (srcY[idx1] - srcY[idx0]);
+      expanded[rOut * outputCols + cOut] =
+        (1.0 - weight) * horizontal[idx0 * outputCols + cOut] +
+        weight * horizontal[idx1 * outputCols + cOut];
+    }
+  }
+  return expanded;
+}
+
+function observerInclusiveAnalysisGrid(
+  outputGrid: GridSpec,
+  observerLatDeg: number,
+  observerLonDeg: number,
+  maximumCells: number
+): AnalysisGrid {
+  const outputRows = outputGrid.ny - 1;
+  const outputColumns = outputGrid.nx - 1;
+  const firstCenterX = outputGrid.xMinM + 0.5 * outputGrid.cellXM;
+  const firstCenterY = outputGrid.yMinM + 0.5 * outputGrid.cellYM;
+  let observerX = lonToMercatorX(observerLonDeg);
+  observerX +=
+    Math.round(
+      (0.5 * (outputGrid.xMinM + outputGrid.xMaxM) - observerX) /
+        WEB_MERCATOR_WORLD_WIDTH_M
+    ) * WEB_MERCATOR_WORLD_WIDTH_M;
+
+  const observerCol = (observerX - firstCenterX) / outputGrid.cellXM;
+  const observerRow =
+    (latToMercatorY(observerLatDeg) - firstCenterY) / outputGrid.cellYM;
+
+  const minCol = Math.min(0, Math.floor(observerCol));
+  const maxCol = Math.max(outputColumns, Math.ceil(observerCol));
+  const minRow = Math.min(0, Math.floor(observerRow));
+  const maxRow = Math.max(outputRows, Math.ceil(observerRow));
+
+  let scale = Math.max(
+    1,
+    Math.ceil(
+      Math.sqrt(
+        ((maxRow - minRow + 1) * (maxCol - minCol + 1)) /
+          Math.max(1024, maximumCells)
+      )
+    )
+  );
+  let limits = { fRow: 0, lRow: 0, fCol: 0, lCol: 0, rows: 0, cols: 0 };
+
+  do {
+    limits.fCol = Math.floor(minCol / scale) * scale;
+    limits.lCol = Math.ceil(maxCol / scale) * scale;
+    limits.fRow = Math.floor(minRow / scale) * scale;
+    limits.lRow = Math.ceil(maxRow / scale) * scale;
+    limits.cols = Math.floor((limits.lCol - limits.fCol) / scale) + 1;
+    limits.rows = Math.floor((limits.lRow - limits.fRow) / scale) + 1;
+    if (limits.rows * limits.cols <= Math.max(1024, maximumCells)) break;
+    scale++;
+  } while (true);
+
+  return {
+    xMinM:
+      firstCenterX +
+      limits.fCol * outputGrid.cellXM -
+      0.5 * outputGrid.cellXM * scale,
+    yMinM:
+      firstCenterY +
+      limits.fRow * outputGrid.cellYM -
+      0.5 * outputGrid.cellYM * scale,
+    xMaxM:
+      firstCenterX +
+      limits.lCol * outputGrid.cellXM +
+      0.5 * outputGrid.cellXM * scale,
+    yMaxM:
+      firstCenterY +
+      limits.lRow * outputGrid.cellYM +
+      0.5 * outputGrid.cellYM * scale,
+    nx: limits.cols,
+    ny: limits.rows,
+    cellXM: outputGrid.cellXM * scale,
+    cellYM: outputGrid.cellYM * scale,
+    sourceRowPositions: new Float64Array(limits.rows).map(
+      (_, i) => limits.fRow + i * scale
+    ),
+    sourceColumnPositions: new Float64Array(limits.cols).map(
+      (_, i) => limits.fCol + i * scale
+    ),
+    scale,
+    extended:
+      limits.fRow !== 0 ||
+      limits.lRow !== outputRows ||
+      limits.fCol !== 0 ||
+      limits.lCol !== outputColumns,
+  };
+}
+
+// ============================================================================
+// 4. Async Chebyshev Ring Reference-Plane Sweep
+// ============================================================================
+async function gridHorizonSweep(
+  angles: Float64Array,
+  distances: Float64Array,
+  rows: number,
+  columns: number,
+  obsRow: number,
+  obsCol: number,
+  runId: number
+): Promise<GridSweepResult> {
+  const inclusive = new Float64Array(rows * columns).fill(-Infinity);
+  const horizonBefore = new Float64Array(rows * columns).fill(-Infinity);
+  const sourceDistance = new Float64Array(rows * columns).fill(0);
+  inclusive[obsRow * columns + obsCol] = -Infinity;
+
+  const maximumRing = Math.max(
+    obsRow,
+    rows - 1 - obsRow,
+    obsCol,
+    columns - 1 - obsCol
+  );
+  let processedCells = 1;
+
+  for (let ring = 1; ring <= maximumRing; ring++) {
+    if (ring % 16 === 0) await checkCancelAndYield(runId);
+
+    const minCol = Math.max(0, obsCol - ring);
+    const maxCol = Math.min(columns - 1, obsCol + ring);
+    for (const r of [obsRow - ring, obsRow + ring]) {
+      if (r >= 0 && r < rows) {
+        const pR = Math.max(
+          0,
+          Math.min(rows - 1, obsRow + Math.sign(r - obsRow) * (ring - 1))
+        );
+        for (let c = minCol; c <= maxCol; c++) {
+          processedCells++;
+          const idx = r * columns + c;
+          const pColF = obsCol + (c - obsCol) * ((ring - 1) / ring);
+          const c0 = Math.floor(pColF);
+          const w = pColF - c0;
+          const pIdx0 = pR * columns + Math.max(0, Math.min(columns - 1, c0));
+          const pIdx1 =
+            pR * columns + Math.max(0, Math.min(columns - 1, c0 + 1));
+
+          let prevAngle = -Infinity,
+            prevDist = 0;
+          if (
+            Number.isFinite(inclusive[pIdx0]) &&
+            Number.isFinite(inclusive[pIdx1])
+          ) {
+            prevAngle = (1.0 - w) * inclusive[pIdx0] + w * inclusive[pIdx1];
+            prevDist =
+              inclusive[pIdx0] >= inclusive[pIdx1]
+                ? sourceDistance[pIdx0]
+                : sourceDistance[pIdx1];
+          } else if (Number.isFinite(inclusive[pIdx0])) {
+            prevAngle = inclusive[pIdx0];
+            prevDist = sourceDistance[pIdx0];
+          } else if (Number.isFinite(inclusive[pIdx1])) {
+            prevAngle = inclusive[pIdx1];
+            prevDist = sourceDistance[pIdx1];
+          }
+
+          horizonBefore[idx] = prevAngle;
+          inclusive[idx] = Math.max(prevAngle, angles[idx]);
+          sourceDistance[idx] =
+            angles[idx] > prevAngle ? distances[idx] : prevDist;
+        }
+      }
+    }
+
+    const minRow = Math.max(0, obsRow - ring + 1);
+    const maxRow = Math.min(rows - 1, obsRow + ring - 1);
+    for (const c of [obsCol - ring, obsCol + ring]) {
+      if (c >= 0 && c < columns) {
+        const pC = Math.max(
+          0,
+          Math.min(columns - 1, obsCol + Math.sign(c - obsCol) * (ring - 1))
+        );
+        for (let r = minRow; r <= maxRow; r++) {
+          processedCells++;
+          const idx = r * columns + c;
+          const pRowF = obsRow + (r - obsRow) * ((ring - 1) / ring);
+          const r0 = Math.floor(pRowF);
+          const w = pRowF - r0;
+          const pIdx0 = Math.max(0, Math.min(rows - 1, r0)) * columns + pC;
+          const pIdx1 = Math.max(0, Math.min(rows - 1, r0 + 1)) * columns + pC;
+
+          let prevAngle = -Infinity,
+            prevDist = 0;
+          if (
+            Number.isFinite(inclusive[pIdx0]) &&
+            Number.isFinite(inclusive[pIdx1])
+          ) {
+            prevAngle = (1.0 - w) * inclusive[pIdx0] + w * inclusive[pIdx1];
+            prevDist =
+              inclusive[pIdx0] >= inclusive[pIdx1]
+                ? sourceDistance[pIdx0]
+                : sourceDistance[pIdx1];
+          } else if (Number.isFinite(inclusive[pIdx0])) {
+            prevAngle = inclusive[pIdx0];
+            prevDist = sourceDistance[pIdx0];
+          } else if (Number.isFinite(inclusive[pIdx1])) {
+            prevAngle = inclusive[pIdx1];
+            prevDist = sourceDistance[pIdx1];
+          }
+
+          horizonBefore[idx] = prevAngle;
+          inclusive[idx] = Math.max(prevAngle, angles[idx]);
+          sourceDistance[idx] =
+            angles[idx] > prevAngle ? distances[idx] : prevDist;
+        }
+      }
+    }
+  }
+  horizonBefore[obsRow * columns + obsCol] = -Infinity;
+  return {
+    horizonBeforeRad: horizonBefore,
+    controllingBlockerDistanceM: sourceDistance,
+    observerRow: obsRow,
+    observerColumn: obsCol,
+    observerSnapDistanceM: 0.0,
+    ringCount: maximumRing,
+    processedCells,
+  };
+}
+
+// ============================================================================
+// 5. Dual Bisection MVA Solvers
+// ============================================================================
+function minimumGeometricAltitudeAgl(
+  obsEcef: [number, number, number],
+  targetLatDeg: number,
+  targetLonDeg: number,
+  terrainElevationM: number,
+  maximumAglM: number
+): { mva: number; saturated: boolean } {
+  let lowAgl = 0.0;
+  let highAgl = maximumAglM;
+
+  const [lowX, lowY, lowZ] = geodeticToEcef(
+    targetLatDeg,
+    targetLonDeg,
+    terrainElevationM + lowAgl
+  );
+  if (!segmentBlockedByEllipsoid(obsEcef, lowX, lowY, lowZ))
+    return { mva: 0.0, saturated: false };
+
+  const [highX, highY, highZ] = geodeticToEcef(
+    targetLatDeg,
+    targetLonDeg,
+    terrainElevationM + highAgl
+  );
+  if (
+    segmentBlockedByEllipsoid(obsEcef, lowX, lowY, lowZ) &&
+    segmentBlockedByEllipsoid(obsEcef, highX, highY, highZ)
+  ) {
+    return { mva: maximumAglM, saturated: true };
+  }
+
+  for (let iter = 0; iter < MVA_BISECTION_ITERATIONS; iter++) {
+    const middleAgl = 0.5 * (lowAgl + highAgl);
+    const [midX, midY, midZ] = geodeticToEcef(
+      targetLatDeg,
+      targetLonDeg,
+      terrainElevationM + middleAgl
+    );
+    if (segmentBlockedByEllipsoid(obsEcef, midX, midY, midZ))
+      lowAgl = middleAgl;
+    else highAgl = middleAgl;
+  }
+  return { mva: highAgl, saturated: false };
+}
+
+function minimumAltitudeForHorizonAngle(
+  obsEcef: [number, number, number],
+  collectorLatDeg: number,
+  collectorLonDeg: number,
+  targetLatDeg: number,
+  targetLonDeg: number,
+  terrainElevationM: number,
+  requiredAngleRad: number,
+  maximumAglM: number
+): { mva: number; saturated: boolean } {
+  let lowAgl = 0.0;
+  let highAgl = maximumAglM;
+
+  const [lowX, lowY, lowZ] = geodeticToEcef(
+    targetLatDeg,
+    targetLonDeg,
+    terrainElevationM + lowAgl
+  );
+  if (
+    elevationAngles(
+      obsEcef,
+      collectorLatDeg,
+      collectorLonDeg,
+      lowX,
+      lowY,
+      lowZ
+    ) >= requiredAngleRad
+  ) {
+    return { mva: 0.0, saturated: false };
+  }
+
+  const [highX, highY, highZ] = geodeticToEcef(
+    targetLatDeg,
+    targetLonDeg,
+    terrainElevationM + highAgl
+  );
+  if (
+    elevationAngles(
+      obsEcef,
+      collectorLatDeg,
+      collectorLonDeg,
+      highX,
+      highY,
+      highZ
+    ) < requiredAngleRad
+  ) {
+    return { mva: maximumAglM, saturated: true };
+  }
+
+  for (let iter = 0; iter < MVA_BISECTION_ITERATIONS; iter++) {
+    const middleAgl = 0.5 * (lowAgl + highAgl);
+    const [midX, midY, midZ] = geodeticToEcef(
+      targetLatDeg,
+      targetLonDeg,
+      terrainElevationM + middleAgl
+    );
+    if (
+      elevationAngles(
+        obsEcef,
+        collectorLatDeg,
+        collectorLonDeg,
+        midX,
+        midY,
+        midZ
+      ) < requiredAngleRad
+    )
+      lowAgl = middleAgl;
+    else highAgl = middleAgl;
+  }
+  return { mva: highAgl, saturated: false };
+}
+
 // ============================================================================
 // Main Worker Execution & Message Processing
 // ============================================================================
-
 self.onmessage = async (event) => {
-  if (!event.data || event.data.type !== "COMPUTE_VIEWSHED") {
-    return;
-  }
+  if (!event.data || event.data.type !== "COMPUTE_VIEWSHED") return;
 
   const payload = event.data.payload;
+  const runId = payload.runId;
+  latestRunId = runId;
+  lastYieldTime = performance.now();
+
   const {
     extent,
     widthPx,
@@ -854,260 +682,275 @@ self.onmessage = async (event) => {
     viewQuestion,
     singleDetail,
   } = payload;
+  const profiler = new Profiler();
 
   try {
-    // 1. BYPASS GRID CLAMPING
-    // Ignore external grid planners that chop bounds at the dateline.
-    // Create a grid that exactly matches the continuous OpenLayers viewport extent.
-    const xMin = extent[0];
-    const yMin = extent[1];
-    const xMax = extent[2];
-    const yMax = extent[3];
-
-    const safeWidth = widthPx || 800;
-    const safeHeight = heightPx || 600;
-
+    profiler.start("Setup & Grid Generation");
+    const safeWidth = Math.round(widthPx || 800);
+    const safeHeight = Math.round(heightPx || 600);
     const grid = {
-      xMinM: xMin,
-      yMinM: yMin,
-      xMaxM: xMax,
-      yMaxM: yMax,
+      xMinM: Number(extent[0]),
+      yMinM: Number(extent[1]),
+      xMaxM: Number(extent[2]),
+      yMaxM: Number(extent[3]),
       nx: safeWidth + 1,
       ny: safeHeight + 1,
-      cellXM: (xMax - xMin) / safeWidth,
-      cellYM: (yMax - yMin) / safeHeight,
-    };
+      cellXM: (Number(extent[2]) - Number(extent[0])) / safeWidth,
+      cellYM: (Number(extent[3]) - Number(extent[1])) / safeHeight,
+      viewResolutionMPerPx:
+        resolution || (Number(extent[2]) - Number(extent[0])) / safeWidth,
+    } as GridSpec;
 
-    const cellM = grid.cellXM;
-    const zoom = terrainZoomForSpacing(cellM, 1.0);
+    const zoom = terrainZoomForSpacing(grid.cellXM, 1.0);
     const targetHeightM = (targetHeightAgl || 0) * 1000.0;
     const outputRows = grid.ny - 1;
     const outputCols = grid.nx - 1;
     const numPixels = outputRows * outputCols;
-
     const observerResults: {
       idx: number;
       isVisible: Uint8Array;
       mva: Float32Array;
     }[] = [];
+    profiler.end("Setup & Grid Generation");
 
     for (const idx of activeCollectorIndices) {
+      await checkCancelAndYield(runId);
       const observer = observers[idx];
       if (!observer) continue;
 
       const collectorLat = observer.latitude_deg;
       const collectorLon = observer.longitude_deg;
-      const configuredAltM = observer.altitude_m || 0;
       const clearanceM =
         observer.kind === "ground"
           ? DEFAULT_MINIMUM_COLLECTOR_CLEARANCE_M
           : 0.0;
-
       const obsX = lonToMercatorX(collectorLon);
-      const obsY = latToMercatorY(collectorLat);
 
-      // WRAP THE OBSERVER X FOR TERRAIN LOOKUP ONLY
       const rawObsTerrain = await terrainProvider.samplePoint(
         wrapMercatorX(obsX),
-        obsY,
+        latToMercatorY(collectorLat),
         zoom
       );
       const observerTerrainM = Math.max(rawObsTerrain, LOS_SURFACE_FLOOR_M);
-
-      let effectiveAltM = configuredAltM;
-      if (configuredAltM < HIGH_ALTITUDE_ANALYTIC_THRESHOLD_M) {
-        const terrainRelativeAlt = observerTerrainM + clearanceM;
-        effectiveAltM = Math.max(configuredAltM, terrainRelativeAlt);
-      }
+      const effectiveAltM = Math.max(
+        observer.altitude_m || 0,
+        observer.altitude_m! < HIGH_ALTITUDE_ANALYTIC_THRESHOLD_M
+          ? observerTerrainM + clearanceM
+          : 0
+      );
       const obsEcef = geodeticToEcef(
         collectorLat,
         collectorLon,
         effectiveAltM
       );
+      const isGeo = effectiveAltM >= HIGH_ALTITUDE_ANALYTIC_THRESHOLD_M;
 
-      // Execute Observer-Inclusive Analysis Grid Setup & Sweep
-      const analysisGrid = observerInclusiveAnalysisGrid(
-        grid,
-        collectorLat,
-        collectorLon,
-        350000
-      );
-      const analysisNx = analysisGrid.nx;
-      const analysisNy = analysisGrid.ny;
-      const analysisCellM = analysisGrid.cellXM;
-
-      const rawAnalysisTerrains = new Float64Array(analysisNx * analysisNy);
-      const analysisLonArr = new Float64Array(analysisNx * analysisNy);
-      const analysisLatArr = new Float64Array(analysisNx * analysisNy);
-
-      for (let r = 0; r < analysisNy; r++) {
-        const yM = analysisGrid.yMinM + (r + 0.5) * analysisCellM;
-        const lat = mercatorYToLat(yM);
-        for (let c = 0; c < analysisNx; c++) {
-          const xM = analysisGrid.xMinM + (c + 0.5) * analysisCellM;
-
-          // WRAP X FOR DEM FETCH AND LON CONVERSION
-          const wrappedXM = wrapMercatorX(xM);
-          const lon = mercatorXToLon(wrappedXM);
-
-          const i = r * analysisNx + c;
-          analysisLonArr[i] = lon;
-          analysisLatArr[i] = lat;
-          rawAnalysisTerrains[i] = await terrainProvider.samplePoint(
-            wrappedXM,
-            yM,
-            zoom
-          );
-        }
-      }
-
-      const { surface: analysisTerrains } =
-        clampDemToVisibleSurface(rawAnalysisTerrains);
-      const analysisDistances = surfaceDistanceM(
-        collectorLat,
-        collectorLon,
-        analysisLatArr,
-        analysisLonArr
-      );
-
-      const analysisAngles = new Float64Array(analysisNx * analysisNy);
-      for (let i = 0; i < analysisAngles.length; i++) {
-        const [tX, tY, tZ] = geodeticToEcef(
-          analysisLatArr[i],
-          analysisLonArr[i],
-          analysisTerrains[i]
-        );
-        analysisAngles[i] = elevationAngles(
-          obsEcef,
-          collectorLat,
-          collectorLon,
-          tX,
-          tY,
-          tZ
-        );
-      }
-
-      const firstCenterX = analysisGrid.xMinM + 0.5 * analysisCellM;
-      const firstCenterY = analysisGrid.yMinM + 0.5 * analysisCellM;
-      let observerXShift = obsX;
-      const gridCenterX = 0.5 * (analysisGrid.xMinM + analysisGrid.xMaxM);
-      observerXShift +=
-        Math.round(
-          (gridCenterX - observerXShift) / WEB_MERCATOR_WORLD_WIDTH_M
-        ) * WEB_MERCATOR_WORLD_WIDTH_M;
-
-      const obsCol = Math.round(
-        (observerXShift - firstCenterX) / analysisCellM
-      );
-      const obsRow = Math.round((obsY - firstCenterY) / analysisCellM);
-
-      const sweepResult = gridHorizonSweep(
-        analysisAngles,
-        analysisDistances,
-        analysisNy,
-        analysisNx,
-        obsRow,
-        obsCol
-      );
-
-      // Expand analysis grid back to viewport output grid
       let viewportHorizonBefore,
         viewportDistances,
         viewportTerrains,
         viewportLatArr,
         viewportLonArr;
 
-      if (analysisGrid.scale === 1) {
-        viewportHorizonBefore = sweepResult.horizonBeforeRad;
-        viewportDistances = analysisDistances;
-        viewportTerrains = analysisTerrains;
-        viewportLatArr = analysisLatArr;
-        viewportLonArr = analysisLonArr;
-      } else {
-        viewportHorizonBefore = bilinearExpandRegularGrid(
-          sweepResult.horizonBeforeRad,
-          analysisNy,
-          analysisNx,
-          outputRows + 1,
-          outputCols + 1,
-          analysisGrid.sourceRowPositions,
-          analysisGrid.sourceColumnPositions
-        );
-        viewportDistances = bilinearExpandRegularGrid(
-          analysisDistances,
-          analysisNy,
-          analysisNx,
-          outputRows + 1,
-          outputCols + 1,
-          analysisGrid.sourceRowPositions,
-          analysisGrid.sourceColumnPositions
-        );
-        viewportTerrains = bilinearExpandRegularGrid(
-          analysisTerrains,
-          analysisNy,
-          analysisNx,
-          outputRows + 1,
-          outputCols + 1,
-          analysisGrid.sourceRowPositions,
-          analysisGrid.sourceColumnPositions
-        );
+      if (isGeo) {
+        profiler.start(`Observer ${idx} - GEO Target Geodesy`);
+        const numNodes = (outputRows + 1) * (outputCols + 1);
+        viewportLatArr = new Float64Array(numNodes);
+        viewportLonArr = new Float64Array(numNodes);
+        const reqX = new Float64Array(numNodes);
+        const reqY = new Float64Array(numNodes);
 
-        viewportLatArr = new Float64Array((outputRows + 1) * (outputCols + 1));
-        viewportLonArr = new Float64Array((outputRows + 1) * (outputCols + 1));
         for (let r = 0; r <= outputRows; r++) {
-          const yM = grid.yMinM + r * cellM;
+          const yM = grid.yMinM + r * grid.cellYM;
           const lat = mercatorYToLat(yM);
           for (let c = 0; c <= outputCols; c++) {
-            const xM = grid.xMinM + c * cellM;
-
-            // WRAP X FOR LON CONVERSION
+            const xM = grid.xMinM + c * grid.cellXM;
             const wrappedXM = wrapMercatorX(xM);
-
             const i = r * (outputCols + 1) + c;
             viewportLatArr[i] = lat;
             viewportLonArr[i] = mercatorXToLon(wrappedXM);
+            reqX[i] = wrappedXM;
+            reqY[i] = yM;
           }
+        }
+        profiler.end(`Observer ${idx} - GEO Target Geodesy`);
+
+        profiler.start(`Observer ${idx} - Fetch GEO Target Terrain`);
+        const rawT = await fetchBatchedTerrain(reqX, reqY, zoom, runId);
+        viewportTerrains = clampDemToVisibleSurface(rawT).surface;
+        profiler.end(`Observer ${idx} - Fetch GEO Target Terrain`);
+
+        viewportDistances = surfaceDistanceM(
+          collectorLat,
+          collectorLon,
+          viewportLatArr,
+          viewportLonArr
+        );
+        viewportHorizonBefore = new Float64Array(numNodes).fill(-Infinity);
+      } else {
+        profiler.start(`Observer ${idx} - Analysis Grid Projection`);
+        const analysisGrid = observerInclusiveAnalysisGrid(
+          grid,
+          collectorLat,
+          collectorLon,
+          350000
+        );
+        const aNx = analysisGrid.nx,
+          aNy = analysisGrid.ny;
+        const aLon = new Float64Array(aNx * aNy),
+          aLat = new Float64Array(aNx * aNy);
+        const reqX = new Float64Array(aNx * aNy),
+          reqY = new Float64Array(aNx * aNy);
+
+        for (let r = 0; r < aNy; r++) {
+          const yM = analysisGrid.yMinM + (r + 0.5) * analysisGrid.cellYM;
+          const lat = mercatorYToLat(yM);
+          for (let c = 0; c < aNx; c++) {
+            const wrappedXM = wrapMercatorX(
+              analysisGrid.xMinM + (c + 0.5) * analysisGrid.cellXM
+            );
+            const i = r * aNx + c;
+            aLon[i] = mercatorXToLon(wrappedXM);
+            aLat[i] = lat;
+            reqX[i] = wrappedXM;
+            reqY[i] = yM;
+          }
+        }
+        profiler.end(`Observer ${idx} - Analysis Grid Projection`);
+
+        profiler.start(`Observer ${idx} - Fetch Analysis Terrain`);
+        const { surface: aTerrains } = clampDemToVisibleSurface(
+          await fetchBatchedTerrain(reqX, reqY, zoom, runId)
+        );
+        profiler.end(`Observer ${idx} - Fetch Analysis Terrain`);
+
+        const aDist = surfaceDistanceM(collectorLat, collectorLon, aLat, aLon);
+        const aAngles = new Float64Array(aNx * aNy);
+        for (let i = 0; i < aAngles.length; i++) {
+          const [tX, tY, tZ] = geodeticToEcef(aLat[i], aLon[i], aTerrains[i]);
+          aAngles[i] = elevationAngles(
+            obsEcef,
+            collectorLat,
+            collectorLon,
+            tX,
+            tY,
+            tZ
+          );
+        }
+
+        const firstCX = analysisGrid.xMinM + 0.5 * analysisGrid.cellXM;
+        const firstCY = analysisGrid.yMinM + 0.5 * analysisGrid.cellYM;
+        let obsXShift =
+          obsX +
+          Math.round(
+            (0.5 * (analysisGrid.xMinM + analysisGrid.xMaxM) - obsX) /
+              WEB_MERCATOR_WORLD_WIDTH_M
+          ) *
+            WEB_MERCATOR_WORLD_WIDTH_M;
+        const oCol = Math.round((obsXShift - firstCX) / analysisGrid.cellXM);
+        const oRow = Math.round(
+          (latToMercatorY(collectorLat) - firstCY) / analysisGrid.cellYM
+        );
+
+        profiler.start(`Observer ${idx} - Chebyshev Horizon Sweep`);
+        const sweep = await gridHorizonSweep(
+          aAngles,
+          aDist,
+          aNy,
+          aNx,
+          oRow,
+          oCol,
+          runId
+        );
+        profiler.end(`Observer ${idx} - Chebyshev Horizon Sweep`);
+
+        if (analysisGrid.scale === 1) {
+          viewportHorizonBefore = sweep.horizonBeforeRad;
+          viewportDistances = aDist;
+          viewportTerrains = aTerrains;
+          viewportLatArr = aLat;
+          viewportLonArr = aLon;
+        } else {
+          profiler.start(`Observer ${idx} - Bilinear Expansion`);
+          viewportHorizonBefore = bilinearExpandRegularGrid(
+            sweep.horizonBeforeRad,
+            aNy,
+            aNx,
+            outputRows + 1,
+            outputCols + 1,
+            analysisGrid.sourceRowPositions,
+            analysisGrid.sourceColumnPositions
+          );
+          viewportDistances = bilinearExpandRegularGrid(
+            aDist,
+            aNy,
+            aNx,
+            outputRows + 1,
+            outputCols + 1,
+            analysisGrid.sourceRowPositions,
+            analysisGrid.sourceColumnPositions
+          );
+          viewportTerrains = bilinearExpandRegularGrid(
+            aTerrains,
+            aNy,
+            aNx,
+            outputRows + 1,
+            outputCols + 1,
+            analysisGrid.sourceRowPositions,
+            analysisGrid.sourceColumnPositions
+          );
+
+          viewportLatArr = new Float64Array(
+            (outputRows + 1) * (outputCols + 1)
+          );
+          viewportLonArr = new Float64Array(
+            (outputRows + 1) * (outputCols + 1)
+          );
+          for (let r = 0; r <= outputRows; r++) {
+            const yM = grid.yMinM + r * grid.cellYM;
+            const lat = mercatorYToLat(yM);
+            for (let c = 0; c <= outputCols; c++) {
+              const wrappedXM = wrapMercatorX(grid.xMinM + c * grid.cellXM);
+              const i = r * (outputCols + 1) + c;
+              viewportLatArr[i] = lat;
+              viewportLonArr[i] = mercatorXToLon(wrappedXM);
+            }
+          }
+          profiler.end(`Observer ${idx} - Bilinear Expansion`);
         }
       }
 
-      // Calculate MVA and Visibility for this observer
+      profiler.start(`Observer ${idx} - Dual Bisection MVA Solvers`);
       const obsVisArray = new Uint8Array(numPixels);
       const obsMvaArray = new Float32Array(numPixels);
-
       for (let r = 0; r < outputRows; r++) {
+        if (r % 32 === 0) await checkCancelAndYield(runId);
         const gridRow = outputRows - 1 - r;
         for (let c = 0; c < outputCols; c++) {
           const mapIdx = gridRow * (outputCols + 1) + c;
           const pixelIdx = r * outputCols + c;
 
-          const distM = viewportDistances[mapIdx];
-          const terrainM = viewportTerrains[mapIdx];
-          const lat = viewportLatArr[mapIdx];
-          const lon = viewportLonArr[mapIdx];
-          const requiredAngle = viewportHorizonBefore[mapIdx];
-
-          const { mva: geoMva } = minimumGeometricAltitudeAgl(
+          const mvaGeo = minimumGeometricAltitudeAgl(
             obsEcef,
-            lat,
-            lon,
-            terrainM,
+            viewportLatArr[mapIdx],
+            viewportLonArr[mapIdx],
+            viewportTerrains[mapIdx],
             DEFAULT_MAXIMUM_MVA_AGL_M
-          );
-          const { mva: terrainMva } = minimumAltitudeForHorizonAngle(
+          ).mva;
+          const mvaTer = minimumAltitudeForHorizonAngle(
             obsEcef,
             collectorLat,
             collectorLon,
-            lat,
-            lon,
-            terrainM,
-            requiredAngle,
+            viewportLatArr[mapIdx],
+            viewportLonArr[mapIdx],
+            viewportTerrains[mapIdx],
+            viewportHorizonBefore[mapIdx],
             DEFAULT_MAXIMUM_MVA_AGL_M
-          );
+          ).mva;
 
-          const mvaAgl = Math.max(geoMva, terrainMva);
-          const nearObserver = distM <= cellM * 0.5;
-          const effectiveMva = nearObserver ? 0.0 : mvaAgl;
-
+          const effectiveMva =
+            viewportDistances[mapIdx] <= grid.cellXM * 0.5
+              ? 0.0
+              : Math.max(mvaGeo, mvaTer);
           obsMvaArray[pixelIdx] = effectiveMva;
           obsVisArray[pixelIdx] =
             targetHeightM + VISIBILITY_ALTITUDE_TOLERANCE_M >= effectiveMva
@@ -1115,73 +958,65 @@ self.onmessage = async (event) => {
               : 0;
         }
       }
-
       observerResults.push({ idx, isVisible: obsVisArray, mva: obsMvaArray });
+      profiler.end(`Observer ${idx} - Dual Bisection MVA Solvers`);
     }
 
-    // 3. Assembly of final RGBA image buffer evaluated against the React Dropdowns
+    profiler.start("RGBA Buffer Assembly");
     const buffer = new ArrayBuffer(numPixels * 4);
     const view = new Uint8ClampedArray(buffer);
 
     for (let p = 0; p < numPixels; p++) {
+      if (p % 100000 === 0) await checkCancelAndYield(runId);
       const offset = p * 4;
-
-      // Extract pixel state across all processed observers
-      let visibleCount = 0;
-      let targetSingleVisible = 0;
-      let targetSingleMva = 0;
+      let visCount = 0,
+        targetVis = 0,
+        targetMva = 0;
 
       for (const res of observerResults) {
-        if (res.isVisible[p] === 1) visibleCount++;
+        if (res.isVisible[p] === 1) visCount++;
         if (res.idx === activeCollectorIdx) {
-          targetSingleVisible = res.isVisible[p];
-          targetSingleMva = res.mva[p];
+          targetVis = res.isVisible[p];
+          targetMva = res.mva[p];
         }
       }
 
-      let drawBlocked = false;
-      let drawMvaHeatmap = false;
+      const drawBlocked =
+        viewQuestion === "coverage-any"
+          ? visCount === 0
+          : viewQuestion === "coverage-all"
+          ? visCount < observerResults.length
+          : viewQuestion === "single" && singleDetail === "blocked"
+          ? targetVis === 0
+          : false;
+      const drawMva = viewQuestion === "single" && singleDetail === "mva";
 
-      if (viewQuestion === "coverage-any") {
-        drawBlocked = visibleCount === 0;
-      } else if (viewQuestion === "coverage-all") {
-        drawBlocked = visibleCount < observerResults.length;
-      } else if (viewQuestion === "single") {
-        if (singleDetail === "blocked") {
-          drawBlocked = targetSingleVisible === 0;
-        } else if (singleDetail === "mva") {
-          drawMvaHeatmap = true;
-        }
-      }
-
-      // Apply Colors
       if (drawBlocked) {
-        view[offset + 0] = 183;
+        view[offset] = 183;
         view[offset + 1] = 50;
         view[offset + 2] = 59;
-        view[offset + 3] = 140; // Blocked Red
-      } else if (drawMvaHeatmap) {
-        // Basic Greyscale Heatmap representation for MVA
-        const intensity = Math.min(
-          255,
-          Math.floor((targetSingleMva / 10000) * 255)
-        );
-        view[offset + 0] = intensity;
-        view[offset + 1] = intensity;
-        view[offset + 2] = intensity;
+        view[offset + 3] = 140;
+      } else if (drawMva) {
+        const i = Math.min(255, Math.floor((targetMva / 10000) * 255));
+        view[offset] = i;
+        view[offset + 1] = i;
+        view[offset + 2] = i;
         view[offset + 3] = 200;
       } else {
-        view[offset + 0] = 0;
+        view[offset] = 0;
         view[offset + 1] = 0;
         view[offset + 2] = 0;
-        view[offset + 3] = 0; // Transparent (Visible)
+        view[offset + 3] = 0;
       }
     }
+    profiler.end("RGBA Buffer Assembly");
+    profiler.print(runId);
 
     self.postMessage(
       {
         type: "COMPUTE_COMPLETE",
         payload: {
+          runId,
           status: "success",
           buffer,
           nx: outputCols,
@@ -1192,6 +1027,13 @@ self.onmessage = async (event) => {
       [buffer]
     );
   } catch (err: any) {
+    if (err.message === "CANCELLED") {
+      console.log(
+        `[Viewshed Worker] Run ${runId} cancelled by a newer viewport event.`
+      );
+      return;
+    }
+    console.error("Worker Computation Error:", err);
     self.postMessage({
       type: "COMPUTE_FAILED",
       payload: { error: err.message || String(err) },

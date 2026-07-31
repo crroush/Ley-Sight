@@ -107,6 +107,7 @@ export function ViewshedApp() {
 
   const lastExtentStrRef = useRef<string>("");
   const isComputingRef = useRef<boolean>(false);
+  const runIdRef = useRef<number>(0);
 
   // Application State
   const [viewQuestion, setViewQuestion] = useState<string>("coverage-any");
@@ -271,7 +272,7 @@ export function ViewshedApp() {
 
         if (event.data.type === "COMPUTE_COMPLETE") {
           const payload = event.data.payload || event.data;
-          const { buffer, nx, ny, bounds } = payload;
+          const { buffer, nx, ny, bounds, runId } = payload;
 
           if (buffer && nx && ny && bounds) {
             const canvas = document.createElement("canvas");
@@ -285,7 +286,7 @@ export function ViewshedApp() {
               ctx.putImageData(imageData, 0, 0);
 
               canvas.toBlob((blob) => {
-                if (blob && mapRef.current) {
+                if (blob && mapRef.current && runId === runIdRef.current) {
                   const blobUrl = URL.createObjectURL(blob);
                   visibilityLayerRef.current.setSource(
                     new ImageStatic({
@@ -296,9 +297,9 @@ export function ViewshedApp() {
                   );
                   visibilityLayerRef.current.changed();
                   mapRef.current.render();
+                  isComputingRef.current = false;
+                  setIsComputing(false);
                 }
-                isComputingRef.current = false;
-                setIsComputing(false);
               }, "image/png");
               return;
             }
@@ -330,7 +331,9 @@ export function ViewshedApp() {
     }
 
     visibilityLayerRef.current.setVisible(true);
-    if (isComputingRef.current && !force) return;
+
+    runIdRef.current += 1;
+    const currentRunId = runIdRef.current;
 
     const map = mapRef.current;
     const view = map.getView();
@@ -343,26 +346,33 @@ export function ViewshedApp() {
       computeIdx = activeIdxs[0];
       syncSet.activeIdx(computeIdx);
     }
-    const targetObs = observersRef.current[computeIdx];
 
     const extent3857 = view.calculateExtent(mapSize);
     const extentKey =
       extent3857.map((n: number) => Math.round(n / 100) * 100).join(",") +
-      `_q:${viewQuestionRef.current}_sd:${singleDetailRef.current}_obs:${computeIdx}_tgt:${targetHeightRef.current}_obsM:${obstructionRef.current}_clr:${clearanceRef.current}`;
+      `_q:${viewQuestionRef.current}_sd:${
+        singleDetailRef.current
+      }_obs:${activeIdxs.join("-")}_active:${computeIdx}_tgt:${
+        targetHeightRef.current
+      }_obsM:${obstructionRef.current}_clr:${clearanceRef.current}`;
 
     if (extentKey === lastExtentStrRef.current && !force) return;
     lastExtentStrRef.current = extentKey;
 
-    const sw = toLatLon([extent3857[0], extent3857[1]]);
-    const ne = toLatLon([extent3857[2], extent3857[3]]);
+    const swRaw = toLatLon([extent3857[0], extent3857[1]]);
+    const neRaw = toLatLon([extent3857[2], extent3857[3]]);
+
+    const wrapLon = (lon: number) => ((((lon + 180) % 360) + 360) % 360) - 180;
+    const sw = [swRaw[0], wrapLon(swRaw[1])];
+    const ne = [neRaw[0], wrapLon(neRaw[1])];
 
     isComputingRef.current = true;
     setIsComputing(true);
 
-
     workerRef.current.postMessage({
       type: "COMPUTE_VIEWSHED",
       payload: {
+        runId: currentRunId,
         extent: extent3857,
         extentLatLon: {
           latMin: sw[0],
@@ -374,7 +384,7 @@ export function ViewshedApp() {
         widthPx: mapSize[0],
         heightPx: mapSize[1],
         observers: observersRef.current,
-        activeCollectorIndices: Array.from(activeCollectorsRef.current),
+        activeCollectorIndices: activeIdxs,
         activeCollectorIdx: activeCollectorRef.current,
         targetHeightAgl: targetHeightRef.current,
         obstructionHeightAglM: obstructionRef.current,
@@ -1072,9 +1082,7 @@ export function ViewshedApp() {
             >
               <option value="coverage-any">Visible to any observer</option>
               <option value="coverage-all">Visible to every observer</option>
-              <option value="coverage-count">Observer coverage count</option>
               <option value="single">Inspect one observer</option>
-              <option value="dem">Exact DEM surface</option>
             </select>
           </div>
 
@@ -1161,11 +1169,6 @@ export function ViewshedApp() {
             >
               <option value="blocked">Blocked at target height</option>
               <option value="mva">Minimum visible altitude</option>
-              <option value="horizon">Controlling horizon angle</option>
-              <option value="blocker">Controlling blocker distance</option>
-              <option value="terrain-relative">
-                Terrain elevation relative to observer
-              </option>
             </select>
           </div>
         )}
