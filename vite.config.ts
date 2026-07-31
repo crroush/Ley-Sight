@@ -11,6 +11,7 @@ export default defineConfig({
       input: {
         landing: "index.html",
         csv: "csv.html",
+        viewshed: "viewshed.html",
         examples: "examples.html",
         vector: "vector.html",
         raster: "raster.html",

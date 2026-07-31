@@ -65,6 +65,13 @@ const DEMO_APPS = [
     href: "/events.html",
     icon: MousePointerClick,
   },
+  {
+    title: "Viewshed / LOS",
+    description:
+      "Application for computing a viewshed/LOS to see if your terrian is blocking your transmitter or receiver",
+    href: "/viewshed.html",
+    icon: MousePointerClick,
+  },
 ] as const;
 
 function StatusIcon({status}: {status: ParityStatus}) {

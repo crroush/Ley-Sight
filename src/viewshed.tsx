@@ -1,0 +1,1545 @@
+import "ol/ol.css";
+import { createRoot } from "react-dom/client";
+import { useEffect, useRef, useState, useCallback } from "react";
+import Feature from "ol/Feature.js";
+import Point from "ol/geom/Point.js";
+import LineString from "ol/geom/LineString.js";
+import VectorLayer from "ol/layer/Vector.js";
+import TileLayer from "ol/layer/Tile.js";
+import ImageLayer from "ol/layer/Image.js";
+import ImageStatic from "ol/source/ImageStatic.js";
+import Map from "ol/Map.js";
+import View from "ol/View.js";
+import { fromLonLat, toLonLat } from "ol/proj.js";
+import OSM from "ol/source/OSM.js";
+import VectorSource from "ol/source/Vector.js";
+import { Circle as CircleStyle, Fill, Stroke, Style } from "ol/style.js";
+
+import { TerrariumTerrainProvider } from "./workers/terrain";
+
+const WGS84_A_M = 6378137.0;
+function lonToMercatorX(lon: number) {
+  return (lon * WGS84_A_M * Math.PI) / 180.0;
+}
+function latToMercatorY(lat: number) {
+  return (
+    WGS84_A_M *
+    Math.log(Math.tan(Math.PI / 4.0 + (lat * Math.PI) / 180.0 / 2.0))
+  );
+}
+
+type Observer = {
+  name: string;
+  kind: "geo" | "aircraft" | "ground";
+  latitude_deg: number;
+  longitude_deg: number;
+  altitude_m: number;
+  color: string;
+};
+
+type ProfileResult = {
+  idx: number;
+  loading: boolean;
+  obsName: string;
+  obsAlt: number;
+  tgtAlt: number;
+  distM: number;
+  profile: { x: number; y: number }[];
+  minElev: number;
+  maxElev: number;
+  isBlocked: boolean;
+};
+
+export function toLatLon(
+  coordinate: number[],
+  projection?: string
+): [number, number] {
+  const [lon, lat] = toLonLat(coordinate, projection);
+  return [lat, lon];
+}
+
+function haversineDistanceM(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatElev(m: number): string {
+  if (Math.abs(m) >= 10000) return (m / 1000).toFixed(1) + " km";
+  return m.toFixed(0) + " m";
+}
+
+const HtmlPin = ({ color }: { color: string }) => (
+  <svg
+    width="24"
+    height="32"
+    viewBox="0 0 24 32"
+    style={{ filter: "drop-shadow(0px 3px 3px rgba(0,0,0,0.3))" }}
+  >
+    <path
+      d="M 12 32 C 12 32 3 21.5 3 12 C 3 7.029 7.029 3 12 3 C 16.971 3 21 7.029 21 12 C 21 21.5 12 32 12 32 Z"
+      fill={color}
+      stroke="#ffffff"
+      strokeWidth="2"
+    />
+    <circle cx="12" cy="12" r="4" fill="#ffffff" />
+  </svg>
+);
+
+export function ViewshedApp() {
+  const mapTargetRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<Map | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+  const terrainProviderRef = useRef<TerrariumTerrainProvider | null>(null);
+  const debounceTimerRef = useRef<number | null>(null);
+
+  const lastExtentStrRef = useRef<string>("");
+  const isComputingRef = useRef<boolean>(false);
+
+  // Application State
+  const [viewQuestion, setViewQuestion] = useState<string>("coverage-any");
+  const [singleDetail, setSingleDetail] = useState<string>("blocked");
+  const [targetHeightAgl, setTargetHeightAgl] = useState<number>(0.0);
+  const [obstructionHeightM, setObstructionHeightM] = useState<number>(0.0);
+  const [collectorClearanceM, setCollectorClearanceM] = useState<number>(10.0);
+
+  const [losOpacity, setLosOpacity] = useState<number>(65);
+  const [baseMapOpacity, setBaseMapOpacity] = useState<number>(100);
+  const [isComputing, setIsComputing] = useState<boolean>(false);
+  const [advancedExpanded, setAdvancedExpanded] = useState<boolean>(false);
+  const [observersDropdownOpen, setObserversDropdownOpen] =
+    useState<boolean>(false);
+
+  const [inspectorText, setInspectorText] = useState<string>(
+    "Hold 'I' + Click to inspect. Hold 'T' + Click to teleport observer."
+  );
+
+  const [observers, setObservers] = useState<Observer[]>([
+    {
+      name: "Ground Site Alpha",
+      kind: "ground",
+      latitude_deg: 39.7392,
+      longitude_deg: -104.9903,
+      altitude_m: 1609.0,
+      color: "#e34a33",
+    },
+    {
+      name: "Airborne Recon 1",
+      kind: "aircraft",
+      latitude_deg: 39.25,
+      longitude_deg: -105.7,
+      altitude_m: 10500.0,
+      color: "#16a34a",
+    },
+    {
+      name: "GEO Space Sensor",
+      kind: "geo",
+      latitude_deg: 0.0,
+      longitude_deg: -100.0,
+      altitude_m: 35786000.0,
+      color: "#7c3aed",
+    },
+  ]);
+
+  const [activeCollectors, setActiveCollectors] = useState<Set<number>>(
+    new Set([0, 1, 2])
+  );
+  const [activeCollectorIdx, setActiveCollectorIdx] = useState<number>(0);
+
+  // Editor & Profile State
+  const [showEditor, setShowEditor] = useState<boolean>(false);
+  const [mapPickWaitingIdx, setMapPickWaitingIdx] = useState<number | null>(
+    null
+  );
+
+  const [profileData, setProfileData] = useState<{
+    active: boolean;
+    results: ProfileResult[];
+  } | null>(null);
+  const [activeProfileTab, setActiveProfileTab] = useState<number>(0);
+
+  // Map Layers
+  const osmSourceRef = useRef(new OSM());
+  const osmLayerRef = useRef(new TileLayer({ source: osmSourceRef.current }));
+  const collectorLayerRef = useRef(
+    new VectorLayer({ source: new VectorSource(), zIndex: 10 })
+  );
+  const validationLayerRef = useRef(
+    new VectorLayer({ source: new VectorSource(), zIndex: 11 })
+  );
+  const visibilityLayerRef = useRef(
+    new ImageLayer({ opacity: losOpacity / 100, zIndex: 5 })
+  );
+
+  // Synchronous Mutable Refs
+  const observersRef = useRef(observers);
+  observersRef.current = observers;
+  const targetHeightRef = useRef(targetHeightAgl);
+  targetHeightRef.current = targetHeightAgl;
+  const activeCollectorRef = useRef(activeCollectorIdx);
+  activeCollectorRef.current = activeCollectorIdx;
+  const activeCollectorsRef = useRef(activeCollectors);
+  activeCollectorsRef.current = activeCollectors;
+  const obstructionRef = useRef(obstructionHeightM);
+  obstructionRef.current = obstructionHeightM;
+  const clearanceRef = useRef(collectorClearanceM);
+  clearanceRef.current = collectorClearanceM;
+  const viewQuestionRef = useRef(viewQuestion);
+  viewQuestionRef.current = viewQuestion;
+  const singleDetailRef = useRef(singleDetail);
+  singleDetailRef.current = singleDetail;
+  const mapPickWaitingRef = useRef(mapPickWaitingIdx);
+  mapPickWaitingRef.current = mapPickWaitingIdx;
+
+  const keysRef = useRef<{ i: boolean; t: boolean }>({ i: false, t: false });
+
+  const syncSet = {
+    viewQuestion: (v: string) => {
+      setViewQuestion(v);
+      viewQuestionRef.current = v;
+    },
+    singleDetail: (v: string) => {
+      setSingleDetail(v);
+      singleDetailRef.current = v;
+    },
+    targetHeight: (v: number) => {
+      setTargetHeightAgl(v);
+      targetHeightRef.current = v;
+    },
+    obstruction: (v: number) => {
+      setObstructionHeightM(v);
+      obstructionRef.current = v;
+    },
+    clearance: (v: number) => {
+      setCollectorClearanceM(v);
+      clearanceRef.current = v;
+    },
+    activeIdx: (v: number) => {
+      setActiveCollectorIdx(v);
+      activeCollectorRef.current = v;
+    },
+  };
+
+  // --------------------------------------------------------------------------
+  // Keyboard Listeners
+  // --------------------------------------------------------------------------
+  useEffect(() => {
+    terrainProviderRef.current = new TerrariumTerrainProvider();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "i") keysRef.current.i = true;
+      if (e.key.toLowerCase() === "t") keysRef.current.t = true;
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "i") keysRef.current.i = false;
+      if (e.key.toLowerCase() === "t") keysRef.current.t = false;
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, []);
+
+  // --------------------------------------------------------------------------
+  // Worker Initialization
+  // --------------------------------------------------------------------------
+  useEffect(() => {
+    workerRef.current = new Worker(
+      new URL("./workers/viewshed.worker.ts", import.meta.url),
+      {
+        type: "module",
+      }
+    );
+
+    workerRef.current.onmessage = (event) => {
+      try {
+        if (!event.data) return;
+
+        if (event.data.type === "COMPUTE_COMPLETE") {
+          const payload = event.data.payload || event.data;
+          const { buffer, nx, ny, bounds } = payload;
+
+          if (buffer && nx && ny && bounds) {
+            const canvas = document.createElement("canvas");
+            canvas.width = nx;
+            canvas.height = ny;
+            const ctx = canvas.getContext("2d");
+
+            if (ctx) {
+              const clampedArray = new Uint8ClampedArray(buffer);
+              const imageData = new ImageData(clampedArray, nx, ny);
+              ctx.putImageData(imageData, 0, 0);
+
+              canvas.toBlob((blob) => {
+                if (blob && mapRef.current) {
+                  const blobUrl = URL.createObjectURL(blob);
+                  visibilityLayerRef.current.setSource(
+                    new ImageStatic({
+                      url: blobUrl,
+                      imageExtent: bounds,
+                      projection: "EPSG:3857",
+                    })
+                  );
+                  visibilityLayerRef.current.changed();
+                  mapRef.current.render();
+                }
+                isComputingRef.current = false;
+                setIsComputing(false);
+              }, "image/png");
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Worker failed:", err);
+      }
+      isComputingRef.current = false;
+      setIsComputing(false);
+    };
+
+    return () => workerRef.current?.terminate();
+  }, []);
+
+  // --------------------------------------------------------------------------
+  // Worker Trigger Dispatcher
+  // --------------------------------------------------------------------------
+  const triggerCompute = useCallback((force = false) => {
+    if (!mapRef.current || !workerRef.current) return;
+
+    const activeIdxs = Array.from(activeCollectorsRef.current).sort();
+    if (activeIdxs.length === 0) {
+      visibilityLayerRef.current.setVisible(false);
+      visibilityLayerRef.current.setSource(null);
+      isComputingRef.current = false;
+      setIsComputing(false);
+      return;
+    }
+
+    visibilityLayerRef.current.setVisible(true);
+    if (isComputingRef.current && !force) return;
+
+    const map = mapRef.current;
+    const view = map.getView();
+    const mapSize = map.getSize();
+
+    if (!mapSize || mapSize[0] <= 0 || mapSize[1] <= 0) return;
+
+    let computeIdx = activeCollectorRef.current;
+    if (!activeIdxs.includes(computeIdx)) {
+      computeIdx = activeIdxs[0];
+      syncSet.activeIdx(computeIdx);
+    }
+    const targetObs = observersRef.current[computeIdx];
+
+    const extent3857 = view.calculateExtent(mapSize);
+    const extentKey =
+      extent3857.map((n: number) => Math.round(n / 100) * 100).join(",") +
+      `_q:${viewQuestionRef.current}_sd:${singleDetailRef.current}_obs:${computeIdx}_tgt:${targetHeightRef.current}_obsM:${obstructionRef.current}_clr:${clearanceRef.current}`;
+
+    if (extentKey === lastExtentStrRef.current && !force) return;
+    lastExtentStrRef.current = extentKey;
+
+    const sw = toLatLon([extent3857[0], extent3857[1]]);
+    const ne = toLatLon([extent3857[2], extent3857[3]]);
+
+    isComputingRef.current = true;
+    setIsComputing(true);
+
+
+    workerRef.current.postMessage({
+      type: "COMPUTE_VIEWSHED",
+      payload: {
+        extent: extent3857,
+        extentLatLon: {
+          latMin: sw[0],
+          lonMin: sw[1],
+          latMax: ne[0],
+          lonMax: ne[1],
+        },
+        resolution: view.getResolution(),
+        widthPx: mapSize[0],
+        heightPx: mapSize[1],
+        observers: observersRef.current,
+        activeCollectorIndices: Array.from(activeCollectorsRef.current),
+        activeCollectorIdx: activeCollectorRef.current,
+        targetHeightAgl: targetHeightRef.current,
+        obstructionHeightAglM: obstructionRef.current,
+        collectorClearanceM: clearanceRef.current,
+        viewQuestion: viewQuestionRef.current,
+        singleDetail: singleDetailRef.current,
+      },
+    });
+  }, []);
+
+  const invalidateAndRecompute = useCallback(() => {
+    lastExtentStrRef.current = "";
+    if (debounceTimerRef.current !== null)
+      window.clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = window.setTimeout(
+      () => triggerCompute(true),
+      50
+    );
+  }, [triggerCompute]);
+
+  // --------------------------------------------------------------------------
+  // Exact DEM Line Sampling Logic
+  // --------------------------------------------------------------------------
+  const fetchDemProfile = async (
+    obs: Observer,
+    tgtLat: number,
+    tgtLon: number,
+    distM: number
+  ) => {
+    if (!terrainProviderRef.current) throw new Error("Provider not ready");
+    const provider = terrainProviderRef.current;
+
+    const SAMPLES = 100;
+    const points: { x: number; y: number }[] = [];
+
+    const startXM = lonToMercatorX(obs.longitude_deg);
+    const startYM = latToMercatorY(obs.latitude_deg);
+    const endXM = lonToMercatorX(tgtLon);
+    const endYM = latToMercatorY(tgtLat);
+
+    for (let i = 0; i <= SAMPLES; i++) {
+      const f = i / SAMPLES;
+      const xM = startXM + (endXM - startXM) * f;
+      const yM = startYM + (endYM - startYM) * f;
+      let elev = 0;
+      try {
+        elev = Math.max(0, await provider.samplePoint(xM, yM, 11));
+      } catch (e) {}
+      points.push({ x: distM * f, y: elev });
+    }
+
+    const obsElev = points[0].y;
+    const tgtElev = points[SAMPLES].y;
+
+    let finalObsAlt = obs.altitude_m;
+    if (obs.kind === "ground") finalObsAlt = obsElev + clearanceRef.current;
+
+    const finalTgtAlt = tgtElev + targetHeightRef.current * 1000;
+
+    let minElev = Math.min(finalObsAlt, finalTgtAlt);
+    let maxElev = Math.max(finalObsAlt, finalTgtAlt);
+    let isBlocked = false;
+
+    for (let i = 0; i <= SAMPLES; i++) {
+      const f = i / SAMPLES;
+      const rayAlt = finalObsAlt + f * (finalTgtAlt - finalObsAlt);
+      const elev = points[i].y;
+      minElev = Math.min(minElev, elev);
+      maxElev = Math.max(maxElev, elev);
+      if (elev > rayAlt && f > 0.02 && f < 0.98) isBlocked = true;
+    }
+
+    return {
+      profile: points,
+      minElev,
+      maxElev,
+      isBlocked,
+      finalObsAlt,
+      finalTgtAlt,
+    };
+  };
+
+  // --------------------------------------------------------------------------
+  // Map Initialization & Event Setup
+  // --------------------------------------------------------------------------
+  useEffect(() => {
+    if (!mapTargetRef.current) return;
+
+    const map = new Map({
+      target: mapTargetRef.current,
+      layers: [
+        osmLayerRef.current,
+        visibilityLayerRef.current,
+        validationLayerRef.current,
+        collectorLayerRef.current,
+      ],
+      view: new View({
+        center: fromLonLat([-104.9903, 39.7392]),
+        zoom: 8,
+      }),
+    });
+    mapRef.current = map;
+
+    map.on("click", (evt) => {
+      const [lon, lat] = toLonLat(evt.coordinate);
+
+      const vSource = validationLayerRef.current.getSource();
+      vSource?.clear();
+      const targetFeature = new Feature(new Point(evt.coordinate));
+      targetFeature.setStyle(
+        new Style({
+          image: new CircleStyle({
+            radius: 7,
+            fill: new Fill({ color: "#2563eb" }),
+            stroke: new Stroke({ color: "#ffffff", width: 2 }),
+          }),
+        })
+      );
+      vSource?.addFeature(targetFeature);
+      validationLayerRef.current.changed();
+      map.renderSync();
+
+      // 1. Editor Map Pick
+      if (mapPickWaitingRef.current !== null) {
+        const idx = mapPickWaitingRef.current;
+        const updated = [...observersRef.current];
+        updated[idx] = {
+          ...updated[idx],
+          latitude_deg: lat,
+          longitude_deg: lon,
+        };
+        setObservers(updated);
+        observersRef.current = updated;
+        setMapPickWaitingIdx(null);
+        mapPickWaitingRef.current = null;
+        map.getTargetElement().style.cursor = "";
+        setInspectorText(
+          `Updated ${updated[idx].name} to ${lat.toFixed(5)}, ${lon.toFixed(
+            5
+          )}`
+        );
+        invalidateAndRecompute();
+        return;
+      }
+
+      // 2. 'T' (Teleport) Modifier
+      if (keysRef.current.t) {
+        const idx = activeCollectorRef.current;
+        const updated = [...observersRef.current];
+        updated[idx] = {
+          ...updated[idx],
+          latitude_deg: lat,
+          longitude_deg: lon,
+        };
+        setObservers(updated);
+        observersRef.current = updated;
+        setInspectorText(
+          `Teleported ${updated[idx].name} to ${lat.toFixed(5)}, ${lon.toFixed(
+            5
+          )}`
+        );
+        invalidateAndRecompute();
+        return;
+      }
+
+      // 3. 'I' (Inspect) Modifier -> Generates Tabbed 2D Profiles
+      if (keysRef.current.i) {
+        const activeIdxs = Array.from(activeCollectorsRef.current);
+        if (activeIdxs.length === 0) return;
+
+        setInspectorText(
+          `Inspecting Profile Target: ${lat.toFixed(6)}°, ${lon.toFixed(6)}°`
+        );
+
+        activeIdxs.forEach((idx) => {
+          const obs = observersRef.current[idx];
+          const obsCoord = fromLonLat([obs.longitude_deg, obs.latitude_deg]);
+          const lineFeature = new Feature(
+            new LineString([obsCoord, evt.coordinate])
+          );
+          lineFeature.setStyle(
+            new Style({
+              stroke: new Stroke({
+                color: obs.color,
+                width: 2,
+                lineDash: [4, 4],
+              }),
+            })
+          );
+          vSource?.addFeature(lineFeature);
+        });
+
+        const initialResults: ProfileResult[] = activeIdxs.map((idx) => {
+          const obs = observersRef.current[idx];
+          const distM = haversineDistanceM(
+            obs.latitude_deg,
+            obs.longitude_deg,
+            lat,
+            lon
+          );
+          return {
+            idx,
+            loading: true,
+            obsName: obs.name,
+            obsAlt: obs.altitude_m,
+            tgtAlt: targetHeightRef.current * 1000,
+            distM,
+            profile: [],
+            minElev: 0,
+            maxElev: 0,
+            isBlocked: false,
+          };
+        });
+
+        setProfileData({ active: true, results: initialResults });
+        setActiveProfileTab(0);
+
+        activeIdxs.forEach((idx) => {
+          const obs = observersRef.current[idx];
+          const distM = haversineDistanceM(
+            obs.latitude_deg,
+            obs.longitude_deg,
+            lat,
+            lon
+          );
+          fetchDemProfile(obs, lat, lon, distM)
+            .then((data) => {
+              setProfileData((prev) => {
+                if (!prev) return prev;
+                const updatedResults = [...prev.results];
+                const tIdx = updatedResults.findIndex((r) => r.idx === idx);
+                if (tIdx !== -1) {
+                  updatedResults[tIdx] = {
+                    ...updatedResults[tIdx],
+                    loading: false,
+                    profile: data.profile,
+                    minElev: data.minElev,
+                    maxElev: data.maxElev,
+                    isBlocked: data.isBlocked,
+                    obsAlt: data.finalObsAlt,
+                    tgtAlt: data.finalTgtAlt,
+                  };
+                }
+                return { ...prev, results: updatedResults };
+              });
+            })
+            .catch(() => {});
+        });
+
+        return;
+      }
+
+      setProfileData(null);
+      setInspectorText(
+        `Selected Target: ${lat.toFixed(6)}°, ${lon.toFixed(
+          6
+        )}°. Hold 'I' + click for profile.`
+      );
+    });
+
+    const handleMapChange = () => {
+      if (debounceTimerRef.current !== null)
+        window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = window.setTimeout(
+        () => triggerCompute(),
+        400
+      );
+    };
+
+    map.on("moveend", handleMapChange);
+    map.once("rendercomplete", () => triggerCompute());
+
+    return () => {
+      map.setTarget(undefined);
+      if (debounceTimerRef.current !== null)
+        window.clearTimeout(debounceTimerRef.current);
+    };
+  }, [triggerCompute]);
+
+  useEffect(() => {
+    const source = collectorLayerRef.current.getSource();
+    source?.clear();
+    observers.forEach((obs, idx) => {
+      const isEnabled = activeCollectors.has(idx);
+      const isInspected = idx === activeCollectorIdx;
+
+      const feature = new Feature(
+        new Point(fromLonLat([obs.longitude_deg, obs.latitude_deg]))
+      );
+      feature.setStyle(
+        new Style({
+          image: new CircleStyle({
+            radius: obs.kind === "aircraft" ? 8.5 : 7.0,
+            fill: new Fill({ color: isEnabled ? obs.color : "#94a3b8" }),
+            stroke: new Stroke({
+              color: isInspected ? "#ffea00" : "#ffffff",
+              width: isInspected ? 3 : 2,
+            }),
+          }),
+        })
+      );
+      source?.addFeature(feature);
+    });
+  }, [observers, activeCollectors, activeCollectorIdx]);
+
+  // --------------------------------------------------------------------------
+  // Selection Control Handlers
+  // --------------------------------------------------------------------------
+  const toggleCollector = (idx: number) => {
+    const updated = new Set(activeCollectorsRef.current);
+    if (updated.has(idx)) updated.delete(idx);
+    else updated.add(idx);
+    setActiveCollectors(updated);
+    activeCollectorsRef.current = updated;
+    invalidateAndRecompute();
+  };
+
+  const handleObserverEdit = (
+    idx: number,
+    field: keyof Observer,
+    value: any
+  ) => {
+    const updated = [...observersRef.current];
+    updated[idx] = { ...updated[idx], [field]: value };
+    setObservers(updated);
+    observersRef.current = updated;
+
+    if (field !== "name" && field !== "color") {
+      invalidateAndRecompute();
+    }
+  };
+
+  const triggerMapPick = (idx: number) => {
+    setMapPickWaitingIdx(idx);
+    mapPickWaitingRef.current = idx;
+    if (mapRef.current) {
+      mapRef.current.getTargetElement().style.cursor = "crosshair";
+    }
+    setInspectorText(
+      `Waiting for map click... (will update ${observers[idx].name})`
+    );
+  };
+
+  // --------------------------------------------------------------------------
+  // Rendering Extraction
+  // --------------------------------------------------------------------------
+  const renderActiveTabContent = () => {
+    const activeRes = profileData?.results[activeProfileTab];
+    if (activeRes === undefined || activeRes === null) {
+      return null;
+    }
+
+    if (activeRes.loading) {
+      return (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: "bold",
+            color: "#64748b",
+          }}
+        >
+          Sampling Exact DEM Terrain...
+        </div>
+      );
+    }
+
+    const activeObsColor =
+      observersRef.current[activeRes.idx]?.color || "#7c3aed";
+
+    let pathD = "M 0,100 L 100,100 Z";
+    let obsY = 100,
+      tgtY = 100;
+
+    if (activeRes.profile.length > 0) {
+      const pY = (elev: number) => {
+        const range = activeRes.maxElev - activeRes.minElev || 1;
+        return 90 - ((elev - activeRes.minElev) / range) * 80;
+      };
+
+      pathD =
+        `M 0,100 ` +
+        activeRes.profile
+          .map((p, i) => {
+            const px = (i / (activeRes.profile.length - 1)) * 100;
+            return `L ${px},${pY(p.y)}`;
+          })
+          .join(" ") +
+        ` L 100,100 Z`;
+
+      obsY = pY(activeRes.obsAlt);
+      tgtY = pY(activeRes.tgtAlt);
+    }
+
+    return (
+      <>
+        <svg
+          width="100%"
+          height="100%"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          style={{ position: "absolute", inset: 0, overflow: "visible" }}
+        >
+          <path
+            d={pathD}
+            fill="#cbd5e1"
+            stroke="#94a3b8"
+            strokeWidth="2"
+            vectorEffect="non-scaling-stroke"
+          />
+          <line
+            x1="0"
+            y1={obsY}
+            x2="100"
+            y2={tgtY}
+            stroke={activeRes.isBlocked ? "#dc2626" : activeObsColor}
+            strokeWidth="3"
+            strokeDasharray="6,4"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+
+        <div
+          style={{
+            position: "absolute",
+            left: "0%",
+            top: `${obsY}%`,
+            transform: "translate(-50%, -100%)",
+            zIndex: 10,
+          }}
+        >
+          <HtmlPin color={activeObsColor} />
+        </div>
+        <div
+          style={{
+            position: "absolute",
+            left: "0%",
+            top: `${obsY}%`,
+            transform: "translate(15px, -24px)",
+            fontWeight: "bold",
+            color: "#1e293b",
+            fontSize: "13px",
+            textShadow:
+              "1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff",
+            whiteSpace: "nowrap",
+            zIndex: 10,
+          }}
+        >
+          {activeRes.obsName} ({formatElev(activeRes.obsAlt)})
+        </div>
+
+        <div
+          style={{
+            position: "absolute",
+            left: "100%",
+            top: `${tgtY}%`,
+            transform: "translate(-50%, -100%)",
+            zIndex: 10,
+          }}
+        >
+          <HtmlPin color="#2563eb" />
+        </div>
+        <div
+          style={{
+            position: "absolute",
+            left: "100%",
+            top: `${tgtY}%`,
+            transform: "translate(-15px, -24px) translateX(-100%)",
+            fontWeight: "bold",
+            color: "#1e293b",
+            fontSize: "13px",
+            textShadow:
+              "1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff",
+            whiteSpace: "nowrap",
+            zIndex: 10,
+          }}
+        >
+          Target ({formatElev(activeRes.tgtAlt)})
+        </div>
+
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "10px",
+            transform: "translateX(-50%)",
+            background: "rgba(255,255,255,0.95)",
+            padding: "4px 12px",
+            borderRadius: "12px",
+            fontSize: "13px",
+            color: "#334155",
+            border: "1px solid #94a3b8",
+            fontWeight: "bold",
+            zIndex: 10,
+            boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+          }}
+        >
+          Range: {(activeRes.distM / 1000).toFixed(2)} km | Status:{" "}
+          <span style={{ color: activeRes.isBlocked ? "#dc2626" : "#16a34a" }}>
+            {activeRes.isBlocked ? "BLOCKED" : "VISIBLE"}
+          </span>
+        </div>
+      </>
+    );
+  };
+
+  return (
+    <main
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        width: "100vw",
+        height: "100vh",
+        overflow: "hidden",
+        fontFamily: "sans-serif",
+        position: "relative",
+      }}
+    >
+      {/* App Header Controls */}
+      <section
+        style={{
+          padding: "8px 12px",
+          background: "#f1f5f9",
+          borderBottom: "1px solid #cbd5e1",
+          fontSize: "13px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+          zIndex: 10,
+        }}
+      >
+        {/* Main Controls Row */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ position: "relative" }}>
+            <label style={{ fontWeight: "bold", marginRight: "6px" }}>
+              Observers:
+            </label>
+            <button
+              onClick={() => setObserversDropdownOpen(!observersDropdownOpen)}
+              style={{
+                padding: "3px 8px",
+                background: "#ffffff",
+                border: "1px solid #94a3b8",
+                borderRadius: "4px",
+                cursor: "pointer",
+                minWidth: "160px",
+                textAlign: "left",
+              }}
+            >
+              {activeCollectors.size === 0
+                ? "None"
+                : activeCollectors.size === observers.length
+                ? `All (${observers.length})`
+                : `${activeCollectors.size} selected`}{" "}
+              ▾
+            </button>
+
+            {observersDropdownOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: "70px",
+                  marginTop: "4px",
+                  background: "#ffffff",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "4px",
+                  boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+                  padding: "8px",
+                  zIndex: 50,
+                  minWidth: "220px",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "8px",
+                    marginBottom: "8px",
+                    borderBottom: "1px solid #e2e8f0",
+                    paddingBottom: "8px",
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      const all = new Set(observers.map((_, i) => i));
+                      setActiveCollectors(all);
+                      activeCollectorsRef.current = all;
+                      invalidateAndRecompute();
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: "4px",
+                      background: "#e2e8f0",
+                      border: "1px solid #94a3b8",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => {
+                      const none = new Set<number>();
+                      setActiveCollectors(none);
+                      activeCollectorsRef.current = none;
+                      visibilityLayerRef.current.setSource(null);
+                      visibilityLayerRef.current.changed();
+                      setIsComputing(false);
+                      isComputingRef.current = false;
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: "4px",
+                      background: "#e2e8f0",
+                      border: "1px solid #94a3b8",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    None
+                  </button>
+                </div>
+                {observers.map((obs, idx) => (
+                  <label
+                    key={idx}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      padding: "4px 0",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={activeCollectors.has(idx)}
+                      onChange={() => toggleCollector(idx)}
+                      style={{ marginRight: "8px" }}
+                    />
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: "12px",
+                        height: "12px",
+                        borderRadius: "50%",
+                        background: obs.color,
+                        marginRight: "8px",
+                      }}
+                    />
+                    {obs.name}
+                  </label>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowEditor(!showEditor)}
+              style={{
+                marginLeft: "8px",
+                padding: "3px 8px",
+                background: "#e2e8f0",
+                border: "1px solid #94a3b8",
+                borderRadius: "4px",
+                cursor: "pointer",
+              }}
+            >
+              Edit...
+            </button>
+          </div>
+
+          <div>
+            <label style={{ fontWeight: "bold", marginRight: "6px" }}>
+              Map Question:
+            </label>
+            <select
+              value={viewQuestion}
+              onChange={(e) => {
+                syncSet.viewQuestion(e.target.value);
+                invalidateAndRecompute();
+              }}
+              style={{
+                padding: "3px 6px",
+                border: "1px solid #94a3b8",
+                borderRadius: "4px",
+              }}
+            >
+              <option value="coverage-any">Visible to any observer</option>
+              <option value="coverage-all">Visible to every observer</option>
+              <option value="coverage-count">Observer coverage count</option>
+              <option value="single">Inspect one observer</option>
+              <option value="dem">Exact DEM surface</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={{ fontWeight: "bold", marginRight: "6px" }}>
+              Target Height:
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              value={targetHeightAgl}
+              onChange={(e) => {
+                syncSet.targetHeight(parseFloat(e.target.value) || 0);
+                invalidateAndRecompute();
+              }}
+              style={{
+                width: "80px",
+                padding: "3px",
+                border: "1px solid #94a3b8",
+                borderRadius: "4px",
+              }}
+            />
+            <span style={{ marginLeft: "4px" }}>km AGL</span>
+          </div>
+
+          <button
+            onClick={() => setAdvancedExpanded(!advancedExpanded)}
+            style={{
+              marginLeft: "auto",
+              padding: "4px 10px",
+              background: "#e2e8f0",
+              border: "1px solid #94a3b8",
+              borderRadius: "4px",
+              cursor: "pointer",
+            }}
+          >
+            {advancedExpanded ? "Settings ▾" : "Settings ▸"}
+          </button>
+        </div>
+
+        {viewQuestion === "single" && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              paddingTop: "6px",
+              borderTop: "1px solid #cbd5e1",
+            }}
+          >
+            <label>Observer to inspect:</label>
+            <select
+              value={activeCollectorIdx}
+              onChange={(e) => {
+                syncSet.activeIdx(Number(e.target.value));
+                invalidateAndRecompute();
+              }}
+              style={{
+                padding: "3px 6px",
+                border: "1px solid #94a3b8",
+                borderRadius: "4px",
+              }}
+            >
+              {observers.map((obs, idx) => (
+                <option key={idx} value={idx}>
+                  {obs.name} ({obs.kind})
+                </option>
+              ))}
+            </select>
+
+            <label style={{ marginLeft: "12px" }}>Detail:</label>
+            <select
+              value={singleDetail}
+              onChange={(e) => {
+                syncSet.singleDetail(e.target.value);
+                invalidateAndRecompute();
+              }}
+              style={{
+                padding: "3px 6px",
+                border: "1px solid #94a3b8",
+                borderRadius: "4px",
+              }}
+            >
+              <option value="blocked">Blocked at target height</option>
+              <option value="mva">Minimum visible altitude</option>
+              <option value="horizon">Controlling horizon angle</option>
+              <option value="blocker">Controlling blocker distance</option>
+              <option value="terrain-relative">
+                Terrain elevation relative to observer
+              </option>
+            </select>
+          </div>
+        )}
+
+        {showEditor && (
+          <div
+            style={{
+              background: "#f8fafc",
+              border: "1px solid #94a3b8",
+              padding: "8px",
+              maxHeight: "250px",
+              overflowY: "auto",
+              borderRadius: "4px",
+            }}
+          >
+            <div
+              style={{
+                fontWeight: "bold",
+                marginBottom: "8px",
+                borderBottom: "1px solid #cbd5e1",
+                paddingBottom: "4px",
+              }}
+            >
+              Edit Observer Geometry
+            </div>
+            <table
+              style={{
+                width: "100%",
+                textAlign: "left",
+                borderCollapse: "collapse",
+              }}
+            >
+              <thead>
+                <tr style={{ borderBottom: "1px solid #cbd5e1" }}>
+                  <th style={{ padding: "4px" }}>Color</th>
+                  <th style={{ padding: "4px" }}>Name</th>
+                  <th style={{ padding: "4px" }}>Kind</th>
+                  <th style={{ padding: "4px" }}>Latitude</th>
+                  <th style={{ padding: "4px" }}>Longitude</th>
+                  <th style={{ padding: "4px" }}>Altitude (m)</th>
+                  <th style={{ padding: "4px" }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {observers.map((obs, idx) => (
+                  <tr key={idx} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                    <td style={{ padding: "4px" }}>
+                      <input
+                        type="color"
+                        value={obs.color}
+                        onChange={(e) =>
+                          handleObserverEdit(idx, "color", e.target.value)
+                        }
+                        style={{
+                          width: "28px",
+                          height: "28px",
+                          padding: "0",
+                          border: "none",
+                          cursor: "pointer",
+                        }}
+                      />
+                    </td>
+                    <td style={{ padding: "4px" }}>
+                      <input
+                        type="text"
+                        value={obs.name}
+                        onChange={(e) =>
+                          handleObserverEdit(idx, "name", e.target.value)
+                        }
+                        style={{ width: "120px", padding: "2px 4px" }}
+                      />
+                    </td>
+                    <td style={{ padding: "4px" }}>
+                      <select
+                        value={obs.kind}
+                        onChange={(e) => {
+                          handleObserverEdit(idx, "kind", e.target.value);
+                          invalidateAndRecompute();
+                        }}
+                        style={{ padding: "2px 4px" }}
+                      >
+                        <option value="ground">Ground</option>
+                        <option value="aircraft">Aircraft</option>
+                        <option value="geo">GEO</option>
+                      </select>
+                    </td>
+                    <td style={{ padding: "4px" }}>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        value={obs.latitude_deg}
+                        onChange={(e) => {
+                          handleObserverEdit(
+                            idx,
+                            "latitude_deg",
+                            parseFloat(e.target.value)
+                          );
+                          invalidateAndRecompute();
+                        }}
+                        style={{ width: "80px", padding: "2px 4px" }}
+                        disabled={obs.kind === "geo"}
+                      />
+                    </td>
+                    <td style={{ padding: "4px" }}>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        value={obs.longitude_deg}
+                        onChange={(e) => {
+                          handleObserverEdit(
+                            idx,
+                            "longitude_deg",
+                            parseFloat(e.target.value)
+                          );
+                          invalidateAndRecompute();
+                        }}
+                        style={{ width: "80px", padding: "2px 4px" }}
+                      />
+                    </td>
+                    <td style={{ padding: "4px" }}>
+                      <input
+                        type="number"
+                        step="1"
+                        value={obs.altitude_m}
+                        onChange={(e) => {
+                          handleObserverEdit(
+                            idx,
+                            "altitude_m",
+                            parseFloat(e.target.value)
+                          );
+                          invalidateAndRecompute();
+                        }}
+                        style={{ width: "80px", padding: "2px 4px" }}
+                      />
+                    </td>
+                    <td style={{ padding: "4px" }}>
+                      {obs.kind !== "geo" && (
+                        <button
+                          onClick={() => triggerMapPick(idx)}
+                          style={{
+                            background:
+                              mapPickWaitingIdx === idx
+                                ? "#fef08a"
+                                : "#e2e8f0",
+                            border: "1px solid #94a3b8",
+                            padding: "2px 6px",
+                            cursor: "pointer",
+                            borderRadius: "4px",
+                          }}
+                        >
+                          {mapPickWaitingIdx === idx
+                            ? "Waiting..."
+                            : "Pick on Map"}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {advancedExpanded && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+              gap: "8px",
+              padding: "8px",
+              background: "#e2e8f0",
+              borderRadius: "4px",
+            }}
+          >
+            <div>
+              <label>Blocker Height: </label>
+              <input
+                type="number"
+                value={obstructionHeightM}
+                onChange={(e) => {
+                  syncSet.obstruction(parseFloat(e.target.value) || 0);
+                  invalidateAndRecompute();
+                }}
+                style={{ width: "60px", padding: "2px 4px" }}
+                title="Uniform height added to all terrain to represent surface clutter (e.g., trees/buildings)."
+              />{" "}
+              m
+            </div>
+            <div>
+              <label>Ground Clearance: </label>
+              <input
+                type="number"
+                value={collectorClearanceM}
+                onChange={(e) => {
+                  syncSet.clearance(parseFloat(e.target.value) || 0);
+                  invalidateAndRecompute();
+                }}
+                style={{ width: "60px", padding: "2px 4px" }}
+                title="Height of the observer antenna above its local bare-earth surface."
+              />{" "}
+              m AGL
+            </div>
+            <div>
+              <label>Viewshed Opacity ({losOpacity}%): </label>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={losOpacity}
+                onChange={(e) => {
+                  setLosOpacity(Number(e.target.value));
+                  visibilityLayerRef.current.setOpacity(
+                    Number(e.target.value) / 100
+                  );
+                }}
+                style={{ verticalAlign: "middle" }}
+              />
+            </div>
+            <div>
+              <label>Base Map Opacity ({baseMapOpacity}%): </label>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={baseMapOpacity}
+                onChange={(e) => {
+                  setBaseMapOpacity(Number(e.target.value));
+                  osmLayerRef.current.setOpacity(Number(e.target.value) / 100);
+                }}
+                style={{ verticalAlign: "middle" }}
+              />
+            </div>
+          </div>
+        )}
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            fontSize: "12px",
+            color: "#475569",
+            background: "#fff6d8",
+            padding: "6px",
+            border: "1px solid #c79a28",
+            borderRadius: "4px",
+          }}
+        >
+          <span>{inspectorText}</span>
+          <span
+            style={{
+              fontWeight: "bold",
+              color: isComputing ? "#e34a33" : "#16a34a",
+            }}
+          >
+            {isComputing ? "Computing exact viewshed..." : "Idle"}
+          </span>
+        </div>
+      </section>
+
+      {/* OpenLayers Map Canvas */}
+      <div style={{ flex: 1, width: "100%", position: "relative" }}>
+        <div ref={mapTargetRef} style={{ width: "100%", height: "100%" }} />
+
+        {/* Tabbed 2D Sightline Profile Panel */}
+        {profileData && profileData.active && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: "20px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: "85%",
+              maxWidth: "900px",
+              height: "300px",
+              background: "#ffffff",
+              border: "1px solid #8a99aa",
+              borderRadius: "6px",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+              zIndex: 20,
+            }}
+          >
+            {/* Header & Tabs */}
+            <div
+              style={{
+                display: "flex",
+                background: "#f1f5f9",
+                borderBottom: "1px solid #cbd5e1",
+                borderTopLeftRadius: "6px",
+                borderTopRightRadius: "6px",
+              }}
+            >
+              <div style={{ display: "flex", flex: 1, overflowX: "auto" }}>
+                {profileData.results.map((res, i) => (
+                  <button
+                    key={res.idx}
+                    onClick={() => setActiveProfileTab(i)}
+                    style={{
+                      padding: "8px 16px",
+                      background:
+                        activeProfileTab === i ? "#ffffff" : "transparent",
+                      border: "none",
+                      borderBottom:
+                        activeProfileTab === i
+                          ? `2px solid ${
+                              observersRef.current[res.idx]?.color || "#3b82f6"
+                            }`
+                          : "2px solid transparent",
+                      borderRight: "1px solid #cbd5e1",
+                      cursor: "pointer",
+                      fontWeight: activeProfileTab === i ? "bold" : "normal",
+                      outline: "none",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: "10px",
+                        height: "10px",
+                        borderRadius: "50%",
+                        background:
+                          observersRef.current[res.idx]?.color || "#3b82f6",
+                        marginRight: "6px",
+                      }}
+                    />
+                    {res.obsName} {res.loading && "(Loading...)"}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => {
+                  setProfileData(null);
+                  validationLayerRef.current.getSource()?.clear();
+                  setInspectorText(
+                    "Hold 'I' + Click to inspect. Hold 'T' + Click to teleport observer."
+                  );
+                }}
+                style={{
+                  padding: "0 12px",
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                  fontSize: "18px",
+                  borderLeft: "1px solid #cbd5e1",
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Active Tab Content Area */}
+            <div
+              style={{
+                flex: 1,
+                position: "relative",
+                margin: "24px 60px",
+                border: "1px solid #cbd5e1",
+                background: "linear-gradient(to bottom, #e0f2fe, #f8fafc)",
+                borderRadius: "4px",
+              }}
+            >
+              {renderActiveTabContent()}
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
+
+const rootElement = document.getElementById("root");
+if (rootElement) {
+  const root = createRoot(rootElement);
+  root.render(<ViewshedApp />);
+}
