@@ -39,6 +39,7 @@ type Observer = {
   latitude_deg: number;
   longitude_deg: number;
   altitude_m: number;
+  antennaHeightAglM: number;
   color: string;
 };
 
@@ -124,7 +125,6 @@ export function ViewshedApp() {
     "clean" | "dirty" | "invalid"
   >("clean");
   const [obstructionHeightM, setObstructionHeightM] = useState<number>(0.0);
-  const [collectorClearanceM, setCollectorClearanceM] = useState<number>(10.0);
 
   const [losOpacity, setLosOpacity] = useState<number>(65);
   const [baseMapOpacity, setBaseMapOpacity] = useState<number>(100);
@@ -144,6 +144,7 @@ export function ViewshedApp() {
       latitude_deg: 39.7392,
       longitude_deg: -104.9903,
       altitude_m: 1609.0,
+      antennaHeightAglM: 10.0,
       color: "#e34a33",
     },
     {
@@ -151,7 +152,8 @@ export function ViewshedApp() {
       kind: "aircraft",
       latitude_deg: 39.25,
       longitude_deg: -105.7,
-      altitude_m: 10500.0,
+      altitude_m: 9144.0,
+      antennaHeightAglM: 0.0,
       color: "#16a34a",
     },
   ]);
@@ -198,8 +200,6 @@ export function ViewshedApp() {
   activeCollectorsRef.current = activeCollectors;
   const obstructionRef = useRef(obstructionHeightM);
   obstructionRef.current = obstructionHeightM;
-  const clearanceRef = useRef(collectorClearanceM);
-  clearanceRef.current = collectorClearanceM;
   const viewQuestionRef = useRef(viewQuestion);
   viewQuestionRef.current = viewQuestion;
   const singleDetailRef = useRef(singleDetail);
@@ -227,10 +227,6 @@ export function ViewshedApp() {
     obstruction: (v: number) => {
       setObstructionHeightM(v);
       obstructionRef.current = v;
-    },
-    clearance: (v: number) => {
-      setCollectorClearanceM(v);
-      clearanceRef.current = v;
     },
     activeIdx: (v: number) => {
       setActiveCollectorIdx(v);
@@ -381,7 +377,9 @@ export function ViewshedApp() {
         singleDetailRef.current
       }_obs:${activeIdxs.join("-")}_active:${computeIdx}_tgt:${
         targetHeightRef.current
-      }_obsM:${obstructionRef.current}_clr:${clearanceRef.current}`;
+      }_obsM:${obstructionRef.current}_clr:${observersRef.current
+        .map((observer) => observer.antennaHeightAglM)
+        .join("-")}`;
 
     if (extentKey === lastExtentStrRef.current && !force) return;
     lastExtentStrRef.current = extentKey;
@@ -418,7 +416,6 @@ export function ViewshedApp() {
         activeCollectorIdx: activeCollectorRef.current,
         targetHeightAgl: targetHeightRef.current,
         obstructionHeightAglM: obstructionRef.current,
-        collectorClearanceM: clearanceRef.current,
         viewQuestion: viewQuestionRef.current,
         singleDetail: singleDetailRef.current,
       },
@@ -444,11 +441,10 @@ export function ViewshedApp() {
     tgtLon: number,
     distM: number
   ) => {
-    const { collectorClearanceM, obstructionHeightAglM } =
-      validateViewshedHeightParameters({
-        collectorClearanceM: clearanceRef.current,
-        obstructionHeightAglM: obstructionRef.current,
-      });
+    const { obstructionHeightAglM } = validateViewshedHeightParameters({
+      collectorClearanceM: obs.antennaHeightAglM,
+      obstructionHeightAglM: obstructionRef.current,
+    });
     if (!terrainProviderRef.current) throw new Error("Provider not ready");
     const provider = terrainProviderRef.current;
 
@@ -487,7 +483,10 @@ export function ViewshedApp() {
     let finalObsAlt = obs.altitude_m;
     if (obs.kind === "ground") {
       const rawObsTerrain = await provider.samplePoint(obsXM, obsYM, zoom);
-      finalObsAlt = groundCollectorElevationM(rawObsTerrain, collectorClearanceM);
+      finalObsAlt = groundCollectorElevationM(
+        rawObsTerrain,
+        obs.antennaHeightAglM
+      );
     }
     const finalTgtAlt =
       Math.max(0, elevations[samples]) + targetHeightRef.current * 1000;
@@ -861,7 +860,8 @@ export function ViewshedApp() {
       kind: "ground",
       latitude_deg: spawnLat,
       longitude_deg: spawnLon,
-      altitude_m: 10,
+      altitude_m: 0,
+      antennaHeightAglM: 10,
       color: randomColor,
     };
 
@@ -937,6 +937,28 @@ export function ViewshedApp() {
     if (field !== "name" && field !== "color") {
       invalidateAndRecompute();
     }
+  };
+
+  const lookupGroundElevation = async (idx: number) => {
+    const observer = observersRef.current[idx];
+    const provider = terrainProviderRef.current;
+    if (!observer || observer.kind !== "ground" || !provider) return;
+
+    const elevationM = await provider.samplePoint(
+      lonToMercatorX(observer.longitude_deg),
+      latToMercatorY(observer.latitude_deg),
+      14
+    );
+    if (!Number.isFinite(elevationM)) return;
+
+    const updated = [...observersRef.current];
+    updated[idx] = { ...observer, altitude_m: Math.max(0, elevationM) };
+    setObservers(updated);
+    observersRef.current = updated;
+    setInspectorText(
+      `${observer.name} DEM elevation: ${Math.max(0, elevationM).toFixed(1)} m`
+    );
+    invalidateAndRecompute();
   };
 
   const triggerMapPick = (idx: number) => {
@@ -1509,7 +1531,7 @@ export function ViewshedApp() {
                   <th style={{ padding: "4px" }}>Kind</th>
                   <th style={{ padding: "4px" }}>Latitude</th>
                   <th style={{ padding: "4px" }}>Longitude</th>
-                  <th style={{ padding: "4px" }}>Altitude (m)</th>
+                  <th style={{ padding: "4px" }}>Height / Altitude</th>
                   <th style={{ padding: "4px" }}>Action</th>
                   <th style={{ padding: "4px" }}></th>{" "}
                   {/* Empty header for trashcan */}
@@ -1548,7 +1570,16 @@ export function ViewshedApp() {
                       <select
                         value={obs.kind}
                         onChange={(e) => {
-                          handleObserverEdit(idx, "kind", e.target.value);
+                          const kind = e.target.value as Observer["kind"];
+                          const updated = [...observersRef.current];
+                          updated[idx] = {
+                            ...updated[idx],
+                            kind,
+                            altitude_m:
+                              kind === "aircraft" ? 9144 : updated[idx].altitude_m,
+                          };
+                          setObservers(updated);
+                          observersRef.current = updated;
                           invalidateAndRecompute();
                         }}
                         style={{ padding: "2px 4px" }}
@@ -1593,20 +1624,55 @@ export function ViewshedApp() {
                       />
                     </td>
                     <td style={{ padding: "4px" }}>
-                      <input
-                        type="number"
-                        step="1"
-                        value={obs.altitude_m}
-                        onChange={(e) => {
-                          handleObserverEdit(
-                            idx,
-                            "altitude_m",
-                            parseFloat(e.target.value)
-                          );
-                          invalidateAndRecompute();
-                        }}
-                        style={{ width: "80px", padding: "2px 4px" }}
-                      />
+                      {obs.kind === "ground" ? (
+                        <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={obs.antennaHeightAglM}
+                            title="Antenna height above the DEM at this collector"
+                            onChange={(e) =>
+                              handleObserverEdit(
+                                idx,
+                                "antennaHeightAglM",
+                                Math.max(0, Number(e.target.value))
+                              )
+                            }
+                            style={{ width: "65px", padding: "2px 4px" }}
+                          />
+                          <span>m AGL</span>
+                          <button
+                            onClick={() => lookupGroundElevation(idx)}
+                            title="Sample the DEM at this latitude and longitude"
+                            style={{ padding: "2px 6px", cursor: "pointer" }}
+                          >
+                            Lookup DEM
+                          </button>
+                          <span title="Last sampled DEM elevation">
+                            {Number.isFinite(obs.altitude_m)
+                              ? `${obs.altitude_m.toFixed(0)} m DEM`
+                              : "DEM unknown"}
+                          </span>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                          <input
+                            type="number"
+                            step="1"
+                            value={obs.altitude_m}
+                            onChange={(e) =>
+                              handleObserverEdit(
+                                idx,
+                                "altitude_m",
+                                Number(e.target.value)
+                              )
+                            }
+                            style={{ width: "80px", padding: "2px 4px" }}
+                          />
+                          <span>m MSL</span>
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: "4px" }}>
                       {obs.kind !== "geo" && (
@@ -1680,21 +1746,6 @@ export function ViewshedApp() {
                 title="Uniform height added to all terrain to represent surface clutter (e.g., trees/buildings)."
               />{" "}
               m
-            </div>
-            <div>
-              <label>Ground Clearance: </label>
-              <input
-                type="number"
-                min="0"
-                value={collectorClearanceM}
-                onChange={(e) => {
-                  syncSet.clearance(parseFloat(e.target.value) || 0);
-                  invalidateAndRecompute();
-                }}
-                style={{ width: "60px", padding: "2px 4px" }}
-                title="Height of the observer antenna above its local bare-earth surface."
-              />{" "}
-              m AGL
             </div>
             <div>
               <label>Viewshed Opacity ({losOpacity}%): </label>

@@ -54,11 +54,11 @@ export interface ComputeViewshedPayload {
     latitude_deg: number;
     longitude_deg: number;
     altitude_m: number;
+    antennaHeightAglM: number;
   }>;
   activeCollectorIndices: number[];
   activeCollectorIdx: number;
   targetHeightAgl: number;
-  collectorClearanceM: number;
   obstructionHeightAglM: number;
   viewQuestion: string;
   singleDetail: string;
@@ -680,7 +680,6 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
     activeCollectorIndices,
     activeCollectorIdx,
     targetHeightAgl,
-    collectorClearanceM,
     obstructionHeightAglM,
     viewQuestion,
     singleDetail,
@@ -689,7 +688,7 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
 
   try {
     validateViewshedHeightParameters({
-      collectorClearanceM,
+      collectorClearanceM: 0,
       obstructionHeightAglM,
     });
     profiler.start("Setup & Grid Generation");
@@ -724,6 +723,10 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
       await checkCancelAndYield(runId);
       const observer = observers[idx];
       if (!observer) continue;
+      validateViewshedHeightParameters({
+        collectorClearanceM: observer.antennaHeightAglM,
+        obstructionHeightAglM,
+      });
 
       const collectorLat = observer.latitude_deg;
       const collectorLon = observer.longitude_deg;
@@ -739,7 +742,7 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
         observer.kind,
         observer.altitude_m,
         observerTerrainM,
-        collectorClearanceM,
+        observer.antennaHeightAglM,
         HIGH_ALTITUDE_ANALYTIC_THRESHOLD_M
       );
       const obsEcef = geodeticToEcef(

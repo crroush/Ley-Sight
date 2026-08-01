@@ -10,6 +10,7 @@ import {
 test("ground observer altitude is derived solely from DEM and clearance", () => {
   assert.equal(effectiveObserverElevationM("ground", 1609, 1600, 0, 100_000), 1600);
   assert.equal(effectiveObserverElevationM("ground", 1609, 1600, 25, 100_000), 1625);
+  assert.equal(effectiveObserverElevationM("ground", 1609, 1600, 80, 100_000), 1680);
 });
 
 function blocked(
