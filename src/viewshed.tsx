@@ -146,8 +146,8 @@ export function ViewshedApp() {
       kind: "ground",
       latitude_deg: 39.730722,
       longitude_deg: -105.232111,
-      altitude_m: 223.0,
-      antennaHeightAglM: 10.0,
+      altitude_m: 2222.4,
+      antennaHeightAglM: 223.0,
       color: "#e34a33",
     },
     {
