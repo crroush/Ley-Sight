@@ -16,6 +16,11 @@ import VectorSource from "ol/source/Vector.js";
 import { Circle as CircleStyle, Fill, Stroke, Style } from "ol/style.js";
 
 import { TerrariumTerrainProvider } from "./workers/terrain";
+import {
+  groundCollectorElevationM,
+  modeledProfileElevationM,
+  validateViewshedHeightParameters,
+} from "./workers/viewshedParameters";
 
 const WGS84_A_M = 6378137.0;
 function lonToMercatorX(lon: number) {
@@ -435,6 +440,11 @@ export function ViewshedApp() {
     tgtLon: number,
     distM: number
   ) => {
+    const { collectorClearanceM, obstructionHeightAglM } =
+      validateViewshedHeightParameters({
+        collectorClearanceM: clearanceRef.current,
+        obstructionHeightAglM: obstructionRef.current,
+      });
     if (!terrainProviderRef.current) throw new Error("Provider not ready");
     const provider = terrainProviderRef.current;
 
@@ -473,7 +483,7 @@ export function ViewshedApp() {
     let finalObsAlt = obs.altitude_m;
     if (obs.kind === "ground") {
       const rawObsTerrain = await provider.samplePoint(obsXM, obsYM, zoom);
-      finalObsAlt = Math.max(0, rawObsTerrain) + clearanceRef.current;
+      finalObsAlt = groundCollectorElevationM(rawObsTerrain, collectorClearanceM);
     }
     const finalTgtAlt =
       Math.max(0, elevations[samples]) + targetHeightRef.current * 1000;
@@ -495,7 +505,12 @@ export function ViewshedApp() {
     let isBlocked = false;
 
     for (let i = 0; i <= samples; i++) {
-      const elev = Math.max(0, elevations[i]);
+      const elev = modeledProfileElevationM(
+        elevations[i],
+        i,
+        samples,
+        obstructionHeightAglM
+      );
 
       const surfDistFromTgt = profileLengthM * (1.0 - i / samples);
       const theta = surfDistFromTgt / R;
@@ -1325,7 +1340,7 @@ export function ViewshedApp() {
                 borderRadius: "4px",
               }}
             />
-            <span style={{ marginLeft: "4px" }}>km AGL</span>
+            <span style={{ marginLeft: "4px" }}>km above bare-earth DEM</span>
           </div>
 
           <button
@@ -1607,9 +1622,10 @@ export function ViewshedApp() {
             }}
           >
             <div>
-              <label>Blocker Height: </label>
+              <label>Modeled Clutter Height: </label>
               <input
                 type="number"
+                min="0"
                 value={obstructionHeightM}
                 onChange={(e) => {
                   syncSet.obstruction(parseFloat(e.target.value) || 0);
@@ -1624,6 +1640,7 @@ export function ViewshedApp() {
               <label>Ground Clearance: </label>
               <input
                 type="number"
+                min="0"
                 value={collectorClearanceM}
                 onChange={(e) => {
                   syncSet.clearance(parseFloat(e.target.value) || 0);

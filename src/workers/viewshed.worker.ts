@@ -11,6 +11,11 @@ import {
   GridSpec,
 } from "./grid";
 import { TerrariumTerrainProvider, terrainZoomForSpacing } from "./terrain";
+import {
+  addObstructionHeightToDem,
+  groundCollectorElevationM,
+  validateViewshedHeightParameters,
+} from "./viewshedParameters";
 
 // ============================================================================
 // 1. WGS84 Constants & Geodesy / Coordinate Transformations
@@ -21,7 +26,6 @@ const WEB_MERCATOR_R_M = WGS84_A_M;
 const TWO_PI = 2.0 * Math.PI;
 const HIGH_ALTITUDE_ANALYTIC_THRESHOLD_M = 100_000.0;
 const DEFAULT_MAXIMUM_MVA_AGL_M = 60_000.0;
-const DEFAULT_MINIMUM_COLLECTOR_CLEARANCE_M = 10.0;
 const VISIBILITY_ALTITUDE_TOLERANCE_M = 0.25;
 const LOS_SURFACE_FLOOR_M = 0.0;
 
@@ -30,6 +34,39 @@ export interface CollectorState {
   kind: "ground" | "aircraft" | "geo" | "leo";
   positionEcefM: [number, number, number];
   altitudeM?: number;
+}
+
+export interface ComputeViewshedPayload {
+  runId: number;
+  extent: [number, number, number, number];
+  extentLatLon: {
+    latMin: number;
+    lonMin: number;
+    latMax: number;
+    lonMax: number;
+  };
+  resolution: number;
+  widthPx: number;
+  heightPx: number;
+  observers: Array<{
+    name: string;
+    kind: "ground" | "aircraft" | "geo" | "leo";
+    latitude_deg: number;
+    longitude_deg: number;
+    altitude_m: number;
+  }>;
+  activeCollectorIndices: number[];
+  activeCollectorIdx: number;
+  targetHeightAgl: number;
+  collectorClearanceM: number;
+  obstructionHeightAglM: number;
+  viewQuestion: string;
+  singleDetail: string;
+}
+
+export interface ComputeViewshedRequest {
+  type: "COMPUTE_VIEWSHED";
+  payload: ComputeViewshedPayload;
 }
 
 export interface AnalysisGrid {
@@ -626,10 +663,10 @@ async function gridHorizonSweep(
 // ============================================================================
 // Main Worker Execution & Message Processing
 // ============================================================================
-self.onmessage = async (event) => {
+self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
   if (!event.data || event.data.type !== "COMPUTE_VIEWSHED") return;
 
-  const payload = event.data.payload;
+  const payload: ComputeViewshedPayload = event.data.payload;
   const runId = payload.runId;
   latestRunId = runId;
   lastYieldTime = performance.now();
@@ -643,12 +680,18 @@ self.onmessage = async (event) => {
     activeCollectorIndices,
     activeCollectorIdx,
     targetHeightAgl,
+    collectorClearanceM,
+    obstructionHeightAglM,
     viewQuestion,
     singleDetail,
   } = payload;
   const profiler = new Profiler();
 
   try {
+    validateViewshedHeightParameters({
+      collectorClearanceM,
+      obstructionHeightAglM,
+    });
     profiler.start("Setup & Grid Generation");
     const safeWidth = Math.round(widthPx || 800);
     const safeHeight = Math.round(heightPx || 600);
@@ -684,10 +727,6 @@ self.onmessage = async (event) => {
 
       const collectorLat = observer.latitude_deg;
       const collectorLon = observer.longitude_deg;
-      const clearanceM =
-        observer.kind === "ground"
-          ? DEFAULT_MINIMUM_COLLECTOR_CLEARANCE_M
-          : 0.0;
       const obsX = lonToMercatorX(collectorLon);
 
       const rawObsTerrain = await terrainProvider.samplePoint(
@@ -699,7 +738,9 @@ self.onmessage = async (event) => {
       const effectiveAltM = Math.max(
         observer.altitude_m || 0,
         observer.altitude_m! < HIGH_ALTITUDE_ANALYTIC_THRESHOLD_M
-          ? observerTerrainM + clearanceM
+          ? observer.kind === "ground"
+            ? groundCollectorElevationM(observerTerrainM, collectorClearanceM)
+            : observerTerrainM
           : 0
       );
       const obsEcef = geodeticToEcef(
@@ -790,11 +831,19 @@ self.onmessage = async (event) => {
         );
         const { surface: aTerrains } =
           clampDemToVisibleSurface(rawAnalysisTerrains);
+        const aObstructionTerrains = addObstructionHeightToDem(
+          aTerrains,
+          obstructionHeightAglM
+        );
         profiler.end(`Observer ${idx} - Fetch Analysis Terrain`);
         const aDist = surfaceDistanceM(collectorLat, collectorLon, aLat, aLon);
         const aAngles = new Float64Array(aNx * aNy);
         for (let i = 0; i < aAngles.length; i++) {
-          const [tX, tY, tZ] = geodeticToEcef(aLat[i], aLon[i], aTerrains[i]);
+          const [tX, tY, tZ] = geodeticToEcef(
+            aLat[i],
+            aLon[i],
+            aObstructionTerrains[i]
+          );
           aAngles[i] = elevationAngles(
             obsEcef,
             collectorLat,
