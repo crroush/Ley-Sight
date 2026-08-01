@@ -124,6 +124,9 @@ export function ViewshedApp() {
   const [targetHeightInputState, setTargetHeightInputState] = useState<
     "clean" | "dirty" | "invalid"
   >("clean");
+  const [antennaHeightDrafts, setAntennaHeightDrafts] = useState<
+    Record<number, string>
+  >({});
   const [obstructionHeightM, setObstructionHeightM] = useState<number>(0.0);
 
   const [losOpacity, setLosOpacity] = useState<number>(65);
@@ -141,9 +144,9 @@ export function ViewshedApp() {
     {
       name: "Ground Site",
       kind: "ground",
-      latitude_deg: 39.7392,
-      longitude_deg: -104.9903,
-      altitude_m: 1609.0,
+      latitude_deg: 39.730722,
+      longitude_deg: -105.232111,
+      altitude_m: 223.0,
       antennaHeightAglM: 10.0,
       color: "#e34a33",
     },
@@ -939,6 +942,19 @@ export function ViewshedApp() {
     }
   };
 
+  const commitAntennaHeight = (idx: number) => {
+    const draft = antennaHeightDrafts[idx];
+    if (draft === undefined) return;
+    const heightM = Number(draft);
+    if (draft.trim() === "" || !Number.isFinite(heightM) || heightM < 0) return;
+    handleObserverEdit(idx, "antennaHeightAglM", heightM);
+    setAntennaHeightDrafts((current) => {
+      const next = { ...current };
+      delete next[idx];
+      return next;
+    });
+  };
+
   const lookupGroundElevation = async (idx: number) => {
     const observer = observersRef.current[idx];
     const provider = terrainProviderRef.current;
@@ -1477,41 +1493,41 @@ export function ViewshedApp() {
         {showEditor && (
           <div
             style={{
-              background: "#f8fafc",
-              border: "1px solid #94a3b8",
-              padding: "8px",
-              maxHeight: "250px",
+              background: "#ffffff",
+              border: "1px solid #cbd5e1",
+              padding: "16px",
+              maxHeight: "360px",
               overflowY: "auto",
-              borderRadius: "4px",
+              borderRadius: "10px",
+              boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)",
             }}
           >
             <div
               style={{
-                fontWeight: "bold",
-                marginBottom: "8px",
-                borderBottom: "1px solid #cbd5e1",
-                paddingBottom: "4px",
-              }}
-            >
-              Edit Observer Geometry
-            </div>
-            <div
-              style={{
-                marginTop: "12px",
                 display: "flex",
-                justifyContent: "flex-start",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "12px",
               }}
             >
+              <div>
+                <div style={{ fontWeight: 700, fontSize: "15px" }}>
+                  Collector geometry
+                </div>
+                <div style={{ color: "#64748b", marginTop: "2px" }}>
+                  Configure positions and sensor heights for each collector.
+                </div>
+              </div>
               <button
                 onClick={handleAddCollector}
                 style={{
-                  padding: "6px 12px",
-                  backgroundColor: "#f1f5f9",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "4px",
+                  padding: "7px 12px",
+                  backgroundColor: "#2563eb",
+                  border: "1px solid #1d4ed8",
+                  borderRadius: "6px",
                   cursor: "pointer",
-                  fontWeight: "bold",
-                  color: "#334155",
+                  fontWeight: 700,
+                  color: "#ffffff",
                 }}
               >
                 + Add Collector
@@ -1521,26 +1537,28 @@ export function ViewshedApp() {
               style={{
                 width: "100%",
                 textAlign: "left",
-                borderCollapse: "collapse",
+                borderCollapse: "separate",
+                borderSpacing: 0,
+                tableLayout: "fixed",
               }}
             >
               <thead>
-                <tr style={{ borderBottom: "1px solid #cbd5e1" }}>
-                  <th style={{ padding: "4px" }}>Color</th>
-                  <th style={{ padding: "4px" }}>Name</th>
-                  <th style={{ padding: "4px" }}>Kind</th>
-                  <th style={{ padding: "4px" }}>Latitude</th>
-                  <th style={{ padding: "4px" }}>Longitude</th>
-                  <th style={{ padding: "4px" }}>Height / Altitude</th>
-                  <th style={{ padding: "4px" }}>Action</th>
-                  <th style={{ padding: "4px" }}></th>{" "}
+                <tr style={{ background: "#f1f5f9", color: "#475569" }}>
+                  <th style={{ padding: "8px", width: "48px" }}>Color</th>
+                  <th style={{ padding: "8px", width: "140px" }}>Name</th>
+                  <th style={{ padding: "8px", width: "90px" }}>Type</th>
+                  <th style={{ padding: "8px", width: "120px" }}>Latitude</th>
+                  <th style={{ padding: "8px", width: "120px" }}>Longitude</th>
+                  <th style={{ padding: "8px", width: "280px" }}>Sensor height</th>
+                  <th style={{ padding: "8px", width: "110px" }}>Position</th>
+                  <th style={{ padding: "8px", width: "44px" }}></th>{" "}
                   {/* Empty header for trashcan */}
                 </tr>
               </thead>
               <tbody>
                 {observers.map((obs, idx) => (
-                  <tr key={idx} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                    <td style={{ padding: "4px" }}>
+                  <tr key={idx} style={{ background: idx % 2 ? "#f8fafc" : "#ffffff" }}>
+                    <td style={{ padding: "8px", borderBottom: "1px solid #e2e8f0" }}>
                       <input
                         type="color"
                         value={obs.color}
@@ -1556,17 +1574,17 @@ export function ViewshedApp() {
                         }}
                       />
                     </td>
-                    <td style={{ padding: "4px" }}>
+                    <td style={{ padding: "8px", borderBottom: "1px solid #e2e8f0" }}>
                       <input
                         type="text"
                         value={obs.name}
                         onChange={(e) =>
                           handleObserverEdit(idx, "name", e.target.value)
                         }
-                        style={{ width: "120px", padding: "2px 4px" }}
+                        style={{ width: "100%", boxSizing: "border-box", padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: "5px" }}
                       />
                     </td>
-                    <td style={{ padding: "4px" }}>
+                    <td style={{ padding: "8px", borderBottom: "1px solid #e2e8f0" }}>
                       <select
                         value={obs.kind}
                         onChange={(e) => {
@@ -1582,7 +1600,7 @@ export function ViewshedApp() {
                           observersRef.current = updated;
                           invalidateAndRecompute();
                         }}
-                        style={{ padding: "2px 4px" }}
+                        style={{ width: "100%", padding: "6px", border: "1px solid #cbd5e1", borderRadius: "5px" }}
                       >
                         <option value="ground">Ground</option>
                         <option value="aircraft">Aircraft</option>
@@ -1590,7 +1608,7 @@ export function ViewshedApp() {
                         <option value="geo">GEO</option>
                       </select>
                     </td>
-                    <td style={{ padding: "4px" }}>
+                    <td style={{ padding: "8px", borderBottom: "1px solid #e2e8f0" }}>
                       <input
                         type="number"
                         step="0.0001"
@@ -1603,11 +1621,11 @@ export function ViewshedApp() {
                           );
                           invalidateAndRecompute();
                         }}
-                        style={{ width: "80px", padding: "2px 4px" }}
+                        style={{ width: "100%", boxSizing: "border-box", padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: "5px" }}
                         disabled={obs.kind === "geo"}
                       />
                     </td>
-                    <td style={{ padding: "4px" }}>
+                    <td style={{ padding: "8px", borderBottom: "1px solid #e2e8f0" }}>
                       <input
                         type="number"
                         step="0.0001"
@@ -1620,32 +1638,53 @@ export function ViewshedApp() {
                           );
                           invalidateAndRecompute();
                         }}
-                        style={{ width: "80px", padding: "2px 4px" }}
+                        style={{ width: "100%", boxSizing: "border-box", padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: "5px" }}
                       />
                     </td>
-                    <td style={{ padding: "4px" }}>
+                    <td style={{ padding: "8px", borderBottom: "1px solid #e2e8f0" }}>
                       {obs.kind === "ground" ? (
                         <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
                           <input
                             type="number"
                             min="0"
                             step="1"
-                            value={obs.antennaHeightAglM}
+                            value={antennaHeightDrafts[idx] ?? String(obs.antennaHeightAglM)}
                             title="Antenna height above the DEM at this collector"
                             onChange={(e) =>
-                              handleObserverEdit(
-                                idx,
-                                "antennaHeightAglM",
-                                Math.max(0, Number(e.target.value))
-                              )
+                              setAntennaHeightDrafts((current) => ({
+                                ...current,
+                                [idx]: e.target.value,
+                              }))
                             }
-                            style={{ width: "65px", padding: "2px 4px" }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") commitAntennaHeight(idx);
+                              if (e.key === "Escape")
+                                setAntennaHeightDrafts((current) => {
+                                  const next = { ...current };
+                                  delete next[idx];
+                                  return next;
+                                });
+                            }}
+                            style={{
+                              width: "72px",
+                              padding: "6px 8px",
+                              border: `2px solid ${
+                                antennaHeightDrafts[idx] !== undefined
+                                  ? "#f59e0b"
+                                  : "#cbd5e1"
+                              }`,
+                              background:
+                                antennaHeightDrafts[idx] !== undefined
+                                  ? "#fef08a"
+                                  : "#ffffff",
+                              borderRadius: "5px",
+                            }}
                           />
                           <span>m AGL</span>
                           <button
                             onClick={() => lookupGroundElevation(idx)}
                             title="Sample the DEM at this latitude and longitude"
-                            style={{ padding: "2px 6px", cursor: "pointer" }}
+                            style={{ padding: "6px 8px", cursor: "pointer", border: "1px solid #94a3b8", borderRadius: "5px", background: "#f8fafc" }}
                           >
                             Lookup DEM
                           </button>
@@ -1674,7 +1713,7 @@ export function ViewshedApp() {
                         </div>
                       )}
                     </td>
-                    <td style={{ padding: "4px" }}>
+                    <td style={{ padding: "8px", borderBottom: "1px solid #e2e8f0" }}>
                       {obs.kind !== "geo" && (
                         <button
                           onClick={() => triggerMapPick(idx)}
@@ -1696,7 +1735,7 @@ export function ViewshedApp() {
                       )}
                     </td>
                     {/* Trashcan Delete Column */}
-                    <td style={{ padding: "4px", textAlign: "center" }}>
+                    <td style={{ padding: "8px", textAlign: "center", borderBottom: "1px solid #e2e8f0" }}>
                       <button
                         onClick={() => handleDeleteCollector(idx)}
                         title="Delete Observer"
