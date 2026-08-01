@@ -109,6 +109,7 @@ function buildDataset(rows: readonly FilterRow[]): {
       timeMin: START_TIME,
       timeMax: END_TIME,
       invalidRows: 0,
+      invalidTimestamps: 0,
     },
   };
 }

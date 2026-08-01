@@ -21,6 +21,7 @@ import {
 import type { ColorValueMode } from "../lib/colorValueModes";
 import { buildFineTimeHistogram } from "../lib/timeHistogram";
 import {mergePackedTableData} from "../lib/tableData";
+import {parseTimestamp} from "../lib/timestamps";
 import {
   TableColumnBuilder,
   tableColumnTransferList,
@@ -222,6 +223,7 @@ async function generateSynthetic(
     timeMin: startedAt,
     timeMax: startedAt + duration,
     invalidRows: 0,
+    invalidTimestamps: 0,
   };
   const dataset = buildDataset(
     requestId,
@@ -239,16 +241,6 @@ function numeric(value: unknown, fallback = Number.NaN): number {
   if (value == null || value === "") return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function timestamp(value: unknown): number {
-  if (value == null || value === "") return Number.NaN;
-  const numericValue = Number(value);
-  if (Number.isFinite(numericValue)) {
-    return numericValue > 10_000_000_000 ? numericValue / 1000 : numericValue;
-  }
-  const millis = Date.parse(String(value));
-  return Number.isFinite(millis) ? millis / 1000 : Number.NaN;
 }
 
 function growableColumns(): GrowableColumns {
@@ -294,6 +286,7 @@ async function parseFiles(
   const hasBase = Boolean(base?.x.length);
   let rowCount = base?.x.length ?? 0;
   let invalidRows = base?.invalidRows ?? 0;
+  let invalidTimestamps = base?.invalidTimestamps ?? 0;
   let timeMin =
     hasBase && Number.isFinite(base!.timeMin) ? base!.timeMin : Infinity;
   let timeMax =
@@ -351,8 +344,9 @@ async function parseFiles(
             const x = projectedX(longitude);
             const y = projectedY(latitude);
             const timeValue = columns.time
-              ? timestamp(row[columns.time])
+              ? parseTimestamp(row[columns.time], columns.timestampInterpretation)
               : Number.NaN;
+            if (columns.time && !Number.isFinite(timeValue)) invalidTimestamps += 1;
             values.x.push(x);
             values.y.push(y);
             values.semiMajor.push(
@@ -410,6 +404,7 @@ async function parseFiles(
     timeMin: Number.isFinite(timeMin) ? timeMin : Number.NaN,
     timeMax: Number.isFinite(timeMax) ? timeMax : Number.NaN,
     invalidRows,
+    invalidTimestamps,
   };
   const appendedColors = fieldColors
     ? fieldColors.finish()

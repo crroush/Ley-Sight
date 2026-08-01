@@ -360,7 +360,8 @@ button {
 
 .toolbar-field select,
 .toolbar-field input,
-.form-grid select {
+.form-grid select,
+.timestamp-preview select {
   height: 31px;
   border: 1px solid var(--line);
   border-radius: 5px;
@@ -372,7 +373,8 @@ button {
 
 .toolbar-field input:focus,
 .toolbar-field select:focus,
-.form-grid select:focus {
+.form-grid select:focus,
+.timestamp-preview select:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 2px rgb(47 129 247 / 14%);
 }
@@ -1478,6 +1480,24 @@ button {
   background: #0c2b29;
   font-size: 10px;
 }
+
+.timestamp-preview {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(260px, 1.3fr);
+  gap: 14px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+}
+
+.timestamp-preview label,
+.timestamp-preview > div { display: grid; gap: 7px; align-content: start; }
+.timestamp-preview select { width: 100%; }
+.timestamp-preview-title { color: var(--muted); font-size: 10px; text-transform: uppercase; }
+.timestamp-preview code { display: flex; justify-content: space-between; gap: 12px; font-size: 10px; }
+.timestamp-preview code span { overflow: hidden; color: var(--muted); text-overflow: ellipsis; }
+.timestamp-preview code strong { color: var(--text); font-weight: 500; white-space: nowrap; }
 
 .dialog-actions {
   display: flex;

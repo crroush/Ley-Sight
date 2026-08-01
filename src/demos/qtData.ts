@@ -210,6 +210,7 @@ export function createQtDataset(
       name,
       rowCount: count,
       invalidRows: 0,
+      invalidTimestamps: 0,
       timeMin: timeMinimum === Infinity ? Number.NaN : timeMinimum,
       timeMax: timeMaximum === -Infinity ? Number.NaN : timeMaximum,
     },

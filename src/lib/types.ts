@@ -7,6 +7,7 @@ export type DatasetSummary = {
   timeMin: number;
   timeMax: number;
   invalidRows: number;
+  invalidTimestamps: number;
 };
 
 export type NumericTableColumn = {
@@ -83,6 +84,7 @@ export type AppendableDataset = Pick<
   "x" | "y" | "semiMajor" | "semiMinor" | "rotation" | "time" | "colors" | "extent"
 > & {
   invalidRows: number;
+  invalidTimestamps: number;
   timeMin: number;
   timeMax: number;
 };
@@ -153,11 +155,21 @@ export type CsvColumnMapping = {
   latitude: string;
   longitude: string;
   time?: string;
+  timestampInterpretation?: TimestampInterpretation;
   semiMajor?: string;
   semiMinor?: string;
   tilt?: string;
   color?: string;
 };
+
+export type TimestampInterpretation =
+  | "automatic"
+  | "iso"
+  | "unix-seconds"
+  | "unix-milliseconds"
+  | "unix-microseconds"
+  | "unix-nanoseconds"
+  | "excel-serial";
 
 export type TableRow = {
   index: number;
