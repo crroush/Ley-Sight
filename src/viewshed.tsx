@@ -111,7 +111,7 @@ export function ViewshedApp() {
   const runIdRef = useRef<number>(0);
 
   // Application State
-  const [viewQuestion, setViewQuestion] = useState<string>("coverage-any");
+  const [viewQuestion, setViewQuestion] = useState<string>("coverage-all");
   const [singleDetail, setSingleDetail] = useState<string>("blocked");
   const [targetHeightAgl, setTargetHeightAgl] = useState<number>(0.0);
   const [obstructionHeightM, setObstructionHeightM] = useState<number>(0.0);
@@ -125,7 +125,7 @@ export function ViewshedApp() {
     useState<boolean>(false);
 
   const [inspectorText, setInspectorText] = useState<string>(
-    "Hold 'I' + Click to inspect. Hold 'T' + Click to teleport observer."
+    "Hold 'I' + Click to see LOS."
   );
 
   const [observers, setObservers] = useState<Observer[]>([
@@ -145,19 +145,12 @@ export function ViewshedApp() {
       altitude_m: 10500.0,
       color: "#16a34a",
     },
-    {
-      name: "GEO",
-      kind: "geo",
-      latitude_deg: 0.0,
-      longitude_deg: -100.0,
-      altitude_m: 35786000.0,
-      color: "#7c3aed",
-    },
   ]);
 
   const [activeCollectors, setActiveCollectors] = useState<Set<number>>(
-    new Set([0, 1, 2])
+    new Set([0])
   );
+  const [mapQuestion, setMapQuestion] = useState("coverage-all");
   const [activeCollectorIdx, setActiveCollectorIdx] = useState<number>(0);
 
   // Editor & Profile State
@@ -360,9 +353,6 @@ export function ViewshedApp() {
 
     visibilityLayerRef.current.setVisible(true);
 
-    runIdRef.current += 1;
-    const currentRunId = runIdRef.current;
-
     const map = mapRef.current;
     const view = map.getView();
     const mapSize = map.getSize();
@@ -393,6 +383,9 @@ export function ViewshedApp() {
     const wrapLon = (lon: number) => ((((lon + 180) % 360) + 360) % 360) - 180;
     const sw = [swRaw[0], wrapLon(swRaw[1])];
     const ne = [neRaw[0], wrapLon(neRaw[1])];
+
+    runIdRef.current += 1;
+    const currentRunId = runIdRef.current;
 
     isComputingRef.current = true;
     setIsComputing(true);
@@ -513,27 +506,40 @@ export function ViewshedApp() {
         rayAlt = At / denom - R;
       }
 
-      const distFromTarget = surfDistFromTgt;
-      const distFromObserver = distM - surfDistFromTgt;
-
-      // FIX: Use an absolute 150-meter physical buffer to prevent self-shadowing,
-      // rather than a percentage of the total distance.
-      if (distFromObserver > 150 && distFromTarget > 150) {
-        if (rayAlt < 0 || elev > rayAlt) {
+      // FIX 1: Remove the 150m blindspot.
+      // Dynamically ignore only the exact first and last sample indices to prevent
+      // pixel self-shadowing, and add a 0.5m grazing tolerance.
+      if (i > 0 && i < samples) {
+        if (rayAlt < 0 || elev > rayAlt + 0.5) {
           isBlocked = true;
         }
       }
 
       points.push({ x: distM - surfDistFromTgt, y: elev, rayAlt });
-      minElev = Math.min(minElev, elev, Math.max(0, rayAlt));
+
+      // FIX 2: Stop forcing the graph to track underground rays.
+      // Only track the physical terrain to calculate the tightest possible zoom bounds.
+      minElev = Math.min(minElev, elev);
       maxElev = Math.max(maxElev, elev);
     }
+    // FIX 3: Smart Y-Axis scaling.
+    // Floating-point math means startF is rarely exactly 0 (e.g., 1.11e-16).
+    // We must check physical distance to prevent ground links from being
+    // treated like space links!
+    const isFullProfile = profileLengthM >= distM - 0.5;
 
-    // 3. Smart Y-Axis scaling to prevent Space sensors from squashing the mountains
-    let graphMaxElev = Math.max(finalTgtAlt, maxElev) + 2000;
-    if (startF === 0 && finalObsAlt < 50000) {
-      // If observer is in the frame and not in space, ensure they fit on the chart
-      graphMaxElev = Math.max(graphMaxElev, finalObsAlt + 500);
+    let graphMaxElev = Math.max(finalTgtAlt, maxElev);
+
+    if (isFullProfile) {
+      // Ground/Aircraft links: Use a tight 20% margin above the highest peak
+      const elevRange = Math.max(20, graphMaxElev - minElev);
+      graphMaxElev = Math.max(graphMaxElev, finalObsAlt) + elevRange * 0.2;
+
+      // Add a 5% bottom margin so the terrain doesn't touch the floor of the SVG
+      minElev = Math.max(0, minElev - elevRange * 0.05);
+    } else {
+      // Space/GEO links: Add 1500m of headroom so the ray plunges from the ceiling
+      graphMaxElev += 1500;
     }
 
     return {
@@ -546,6 +552,7 @@ export function ViewshedApp() {
       finalTgtAlt,
     };
   };
+
   // --------------------------------------------------------------------------
   // Map Initialization & Event Setup
   // --------------------------------------------------------------------------
@@ -737,17 +744,16 @@ export function ViewshedApp() {
         });
         return;
       }
+      // ... (Keep the map.on("click") block exactly as is)
 
       // 4. Default plain click (No Modifiers)
-      // Explicitly clean up the map, dismiss the inspector panel, and reset text
       vSource?.clear();
       validationLayerRef.current.changed();
       map.renderSync();
       setProfileData(null);
-      setInspectorText(
-        "Hold 'I' + Click to inspect. Hold 'T' + Click to teleport observer."
-      );
+      setInspectorText("Hold 'I' + Click to see LOS. ");
     });
+
     const handleMapChange = () => {
       if (debounceTimerRef.current !== null)
         window.clearTimeout(debounceTimerRef.current);
@@ -758,14 +764,24 @@ export function ViewshedApp() {
     };
 
     map.on("moveend", handleMapChange);
-    map.once("rendercomplete", () => triggerCompute());
+    map.on("change:size", handleMapChange); // Catch browser window resizing
+
+    // FIX: Force the initial compute safely after the DOM layout settles
+    // instead of waiting for flaky base map tiles to download
+    const initTimer = window.setTimeout(() => {
+      if (mapRef.current) {
+        mapRef.current.updateSize();
+        invalidateAndRecompute();
+      }
+    }, 150);
 
     return () => {
+      window.clearTimeout(initTimer);
       map.setTarget(undefined);
       if (debounceTimerRef.current !== null)
         window.clearTimeout(debounceTimerRef.current);
     };
-  }, [triggerCompute]);
+  }, [triggerCompute, invalidateAndRecompute]); // Ensure dependency array includes both
 
   useEffect(() => {
     const source = collectorLayerRef.current.getSource();
@@ -802,6 +818,90 @@ export function ViewshedApp() {
     else updated.add(idx);
     setActiveCollectors(updated);
     activeCollectorsRef.current = updated;
+    invalidateAndRecompute();
+  };
+
+  const handleAddCollector = () => {
+    // Determine spawn coordinates (defaulting to the first observer's location)
+    const spawnLat = observersRef.current[0]?.latitude_deg || 39.7392;
+    const spawnLon = observersRef.current[0]?.longitude_deg || -104.9903;
+
+    // Pick a random distinct color for the new trace
+    const colors = [
+      "#9333ea",
+      "#ea580c",
+      "#0ea5e9",
+      "#06b6d4",
+      "#ec4899",
+      "#14b8a6",
+    ];
+    const randomColor = colors[observersRef.current.length % colors.length];
+
+    const newObserver: Observer = {
+      name: `Collector ${observersRef.current.length + 1}`,
+      kind: "ground",
+      latitude_deg: spawnLat,
+      longitude_deg: spawnLon,
+      altitude_m: 10,
+      color: randomColor,
+    };
+
+    const updatedObservers = [...observersRef.current, newObserver];
+    setObservers(updatedObservers);
+    observersRef.current = updatedObservers;
+
+    // Automatically check the box for the new collector
+    const updatedActive = new Set(activeCollectorsRef.current);
+    updatedActive.add(updatedObservers.length - 1);
+    setActiveCollectors(updatedActive);
+    activeCollectorsRef.current = updatedActive;
+
+    invalidateAndRecompute();
+  };
+
+  const handleDeleteCollector = (indexToRemove: number) => {
+    // Prevent deleting the very last observer to avoid crashing the app
+    if (observersRef.current.length <= 1) return;
+
+    // 1. Remove the observer from the array
+    const updatedObservers = observersRef.current.filter(
+      (_, idx) => idx !== indexToRemove
+    );
+    setObservers(updatedObservers);
+    observersRef.current = updatedObservers;
+
+    // 2. Shift the active checkboxes down to match the new array structure
+    const updatedActive = new Set<number>();
+    activeCollectorsRef.current.forEach((idx) => {
+      if (idx < indexToRemove) {
+        updatedActive.add(idx); // Unchanged
+      } else if (idx > indexToRemove) {
+        updatedActive.add(idx - 1); // Shifted down
+      }
+    });
+    setActiveCollectors(updatedActive);
+    activeCollectorsRef.current = updatedActive;
+
+    // 3. Clean up the single-inspector/teleport pointer using your syncSet helper
+    if (activeCollectorRef.current === indexToRemove) {
+      syncSet.activeIdx(0);
+    } else if (activeCollectorRef.current > indexToRemove) {
+      syncSet.activeIdx(activeCollectorRef.current - 1);
+    }
+
+    // 4. Clean up Map Pick pointer
+    if (mapPickWaitingRef.current === indexToRemove) {
+      setMapPickWaitingIdx(null);
+      mapPickWaitingRef.current = null;
+      if (mapRef.current) mapRef.current.getTargetElement().style.cursor = "";
+    } else if (
+      mapPickWaitingRef.current !== null &&
+      mapPickWaitingRef.current > indexToRemove
+    ) {
+      setMapPickWaitingIdx(mapPickWaitingRef.current - 1);
+      mapPickWaitingRef.current -= 1;
+    }
+
     invalidateAndRecompute();
   };
 
@@ -1199,8 +1299,8 @@ export function ViewshedApp() {
                 borderRadius: "4px",
               }}
             >
-              <option value="coverage-any">Visible to any observer</option>
               <option value="coverage-all">Visible to every observer</option>
+              <option value="coverage-any">Visible to any observer</option>
               <option value="single">Inspect one observer</option>
             </select>
           </div>
@@ -1313,6 +1413,28 @@ export function ViewshedApp() {
             >
               Edit Observer Geometry
             </div>
+            <div
+              style={{
+                marginTop: "12px",
+                display: "flex",
+                justifyContent: "flex-start",
+              }}
+            >
+              <button
+                onClick={handleAddCollector}
+                style={{
+                  padding: "6px 12px",
+                  backgroundColor: "#f1f5f9",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                  color: "#334155",
+                }}
+              >
+                + Add Collector
+              </button>
+            </div>
             <table
               style={{
                 width: "100%",
@@ -1329,6 +1451,8 @@ export function ViewshedApp() {
                   <th style={{ padding: "4px" }}>Longitude</th>
                   <th style={{ padding: "4px" }}>Altitude (m)</th>
                   <th style={{ padding: "4px" }}>Action</th>
+                  <th style={{ padding: "4px" }}></th>{" "}
+                  {/* Empty header for trashcan */}
                 </tr>
               </thead>
               <tbody>
@@ -1445,6 +1569,25 @@ export function ViewshedApp() {
                         </button>
                       )}
                     </td>
+                    {/* Trashcan Delete Column */}
+                    <td style={{ padding: "4px", textAlign: "center" }}>
+                      <button
+                        onClick={() => handleDeleteCollector(idx)}
+                        title="Delete Observer"
+                        disabled={observers.length <= 1} // Prevent deleting the last one
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          cursor:
+                            observers.length <= 1 ? "not-allowed" : "pointer",
+                          color: observers.length <= 1 ? "#cbd5e1" : "#ef4444",
+                          fontSize: "16px",
+                          padding: "2px 6px",
+                        }}
+                      >
+                        🗑️
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1543,7 +1686,7 @@ export function ViewshedApp() {
               color: isComputing ? "#e34a33" : "#16a34a",
             }}
           >
-            {isComputing ? "Computing exact viewshed..." : "Idle"}
+            {isComputing ? "Computing ViewShed..." : "Idle"}
           </span>
         </div>
       </section>
@@ -1624,9 +1767,7 @@ export function ViewshedApp() {
                 onClick={() => {
                   setProfileData(null);
                   validationLayerRef.current.getSource()?.clear();
-                  setInspectorText(
-                    "Hold 'I' + Click to inspect. Hold 'T' + Click to teleport observer."
-                  );
+                  setInspectorText("Hold 'I' + Click to see LOS.");
                 }}
                 style={{
                   padding: "0 12px",
