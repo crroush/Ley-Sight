@@ -49,8 +49,11 @@ export function modeledProfileElevationM(
   obstructionHeightAglM: number,
 ): number {
   const bareEarth = bareEarthElevationM;
+  // Terrarium encodes open water as exactly zero. Uniform land clutter (trees
+  // and buildings) must not turn the ocean into an artificial wall.
+  const modeledObstructionHeight = bareEarth === 0 ? 0 : obstructionHeightAglM;
   return sampleIndex > 0 && sampleIndex < lastSampleIndex
-    ? bareEarth + obstructionHeightAglM
+    ? bareEarth + modeledObstructionHeight
     : bareEarth;
 }
 
@@ -60,6 +63,8 @@ export function addObstructionHeightToDem(
 ): Float64Array {
   return Float64Array.from(
     bareEarthElevationsM,
-    (elevationM) => elevationM + obstructionHeightAglM,
+    (elevationM) => elevationM === 0
+      ? elevationM
+      : elevationM + obstructionHeightAglM,
   );
 }

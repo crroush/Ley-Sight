@@ -1934,7 +1934,7 @@ export function ViewshedApp() {
                   invalidateAndRecompute();
                 }}
                 style={{ width: "60px", padding: "2px 4px" }}
-                title="Uniform height added to all terrain to represent surface clutter (e.g., trees/buildings)."
+                title="Uniform height added to land terrain to represent surface clutter (e.g., trees/buildings). Open water remains uncluttered."
               />{" "}
               m
             </div>

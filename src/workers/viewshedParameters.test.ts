@@ -34,8 +34,17 @@ function blocked(
 test("collector clearance and modeled obstruction change synthetic visibility", () => {
   assert.equal(blocked([0, 0, 0], 0, 0), false, "zero-height case");
   assert.equal(blocked([0, 2, 0], 5, 0), false, "elevated antenna case");
-  assert.equal(blocked([0, 0, 0], 0, 2), true, "elevated blocker case");
-  assert.equal(blocked([0, 0, 0], 5, 2), false, "combined case");
+  assert.equal(blocked([1, 1, 1], 0, 2), true, "elevated blocker case");
+  assert.equal(blocked([1, 1, 1], 5, 2), false, "combined case");
+});
+
+test("modeled land clutter does not make ocean block a beach sensor", () => {
+  assert.equal(blocked([0, 0, 0], 2, 30), false);
+  assert.equal(modeledProfileElevationM(0, 1, 2, 30), 0);
+  assert.deepEqual(
+    Array.from(addObstructionHeightToDem(new Float64Array([0, 4, -4]), 30)),
+    [0, 34, 26],
+  );
 });
 
 test("target endpoint remains bare-earth based", () => {
@@ -49,7 +58,7 @@ test("finite terrain below sea level is preserved throughout modeling", () => {
   assert.equal(modeledProfileElevationM(-50, 2, 2, 8), -50);
   assert.deepEqual(
     Array.from(addObstructionHeightToDem(new Float64Array([-100, 0, 20]), 5)),
-    [-95, 5, 25],
+    [-95, 0, 25],
   );
 });
 
