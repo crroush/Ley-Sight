@@ -30,7 +30,7 @@ function latToMercatorY(lat: number) {
 
 type Observer = {
   name: string;
-  kind: "geo" | "aircraft" | "ground";
+  kind: "geo" | "leo" | "aircraft" | "ground";
   latitude_deg: number;
   longitude_deg: number;
   altitude_m: number;
@@ -44,7 +44,8 @@ type ProfileResult = {
   obsAlt: number;
   tgtAlt: number;
   distM: number;
-  profile: { x: number; y: number }[];
+  profileLengthM: number;
+  profile: { x: number; y: number; rayAlt: number }[];
   minElev: number;
   maxElev: number;
   isBlocked: boolean;
@@ -129,7 +130,7 @@ export function ViewshedApp() {
 
   const [observers, setObservers] = useState<Observer[]>([
     {
-      name: "Ground Site Alpha",
+      name: "Ground Site",
       kind: "ground",
       latitude_deg: 39.7392,
       longitude_deg: -104.9903,
@@ -137,7 +138,7 @@ export function ViewshedApp() {
       color: "#e34a33",
     },
     {
-      name: "Airborne Recon 1",
+      name: "Airborne",
       kind: "aircraft",
       latitude_deg: 39.25,
       longitude_deg: -105.7,
@@ -145,7 +146,7 @@ export function ViewshedApp() {
       color: "#16a34a",
     },
     {
-      name: "GEO Space Sensor",
+      name: "GEO",
       kind: "geo",
       latitude_deg: 0.0,
       longitude_deg: -100.0,
@@ -203,6 +204,8 @@ export function ViewshedApp() {
   singleDetailRef.current = singleDetail;
   const mapPickWaitingRef = useRef(mapPickWaitingIdx);
   mapPickWaitingRef.current = mapPickWaitingIdx;
+  const showEditorRef = useRef(showEditor);
+  showEditorRef.current = showEditor;
 
   const keysRef = useRef<{ i: boolean; t: boolean }>({ i: false, t: false });
 
@@ -278,9 +281,14 @@ export function ViewshedApp() {
       try {
         if (!event.data) return;
 
+        const payload = event.data.payload || event.data;
+        const { runId } = payload;
+
+        // 1. Immediately ignore any messages from obsolete, cancelled runs
+        if (runId !== undefined && runId !== runIdRef.current) return;
+
         if (event.data.type === "COMPUTE_COMPLETE") {
-          const payload = event.data.payload || event.data;
-          const { buffer, nx, ny, bounds, runId } = payload;
+          const { buffer, nx, ny, bounds } = payload;
 
           if (buffer && nx && ny && bounds) {
             const canvas = document.createElement("canvas");
@@ -294,32 +302,44 @@ export function ViewshedApp() {
               ctx.putImageData(imageData, 0, 0);
 
               canvas.toBlob((blob) => {
-                if (blob && mapRef.current && runId === runIdRef.current) {
-                  const blobUrl = URL.createObjectURL(blob);
-                  visibilityLayerRef.current.setSource(
-                    new ImageStatic({
-                      url: blobUrl,
-                      imageExtent: bounds,
-                      projection: "EPSG:3857",
-                    })
-                  );
-                  visibilityLayerRef.current.changed();
-                  mapRef.current.render();
+                // 2. Guarantee the UI clears out of the "Computing" state,
+                // even if the blob serialization somehow fails
+                if (runId === runIdRef.current) {
                   isComputingRef.current = false;
                   setIsComputing(false);
+
+                  if (blob && mapRef.current) {
+                    const blobUrl = URL.createObjectURL(blob);
+                    visibilityLayerRef.current.setSource(
+                      new ImageStatic({
+                        url: blobUrl,
+                        imageExtent: bounds,
+                        projection: "EPSG:3857",
+                      })
+                    );
+                    visibilityLayerRef.current.changed();
+                    mapRef.current.render();
+                  }
                 }
               }, "image/png");
-              return;
+
+              return; // Crucial: return here so we don't prematurely hit the fallback
             }
           }
+        } else if (event.data.type === "COMPUTE_FAILED") {
+          console.error("Worker Computation Error:", payload.error);
         }
-      } catch (err) {
-        console.error("Worker failed:", err);
-      }
-      isComputingRef.current = false;
-      setIsComputing(false);
-    };
 
+        // 3. Fallback: If we reached here (missing buffer, failed ctx, or COMPUTE_FAILED),
+        // and we are the active run, reset the UI to Idle.
+        isComputingRef.current = false;
+        setIsComputing(false);
+      } catch (err) {
+        console.error("Worker message parsing failed:", err);
+        isComputingRef.current = false;
+        setIsComputing(false);
+      }
+    };
     return () => workerRef.current?.terminate();
   }, []);
 
@@ -414,10 +434,7 @@ export function ViewshedApp() {
   }, [triggerCompute]);
 
   // --------------------------------------------------------------------------
-  // Exact DEM Line Sampling Logic
-  // --------------------------------------------------------------------------
-  // --------------------------------------------------------------------------
-  // Exact DEM Line Sampling Logic
+  // Exact DEM Line Sampling Logic (Curvature Adjusted)
   // --------------------------------------------------------------------------
   const fetchDemProfile = async (
     obs: Observer,
@@ -428,70 +445,102 @@ export function ViewshedApp() {
     if (!terrainProviderRef.current) throw new Error("Provider not ready");
     const provider = terrainProviderRef.current;
 
-    // 1. Logical thresholds for sample spacing based on observer altitude
-    let minSpacingM = 30.0; // High-res (~Zoom 14) for ground collectors
-    if (obs.altitude_m > 10_000) minSpacingM = 90.0; // Medium-res for aircraft
-    if (obs.altitude_m > 100_000) minSpacingM = 5000.0; // Low-res for GEO/Space
+    // 1. Cap the profile graph to the final 300km for high-altitude/space sensors
+    const MAX_PROFILE_DIST = 300_000;
+    const profileLengthM = Math.min(distM, MAX_PROFILE_DIST);
 
-    // 2. Calculate number of samples, clamped between 100 and 1000 for UI responsiveness
-    let samples = Math.ceil(distM / minSpacingM);
-    samples = Math.max(100, Math.min(samples, 1000));
+    // Dynamic sampling: high-res 500m spacing for the local graph
+    let samples = Math.ceil(profileLengthM / 500);
+    samples = Math.max(100, Math.min(samples, 600));
 
-    // 3. Determine optimal zoom level for the actual spacing to prevent over-fetching
-    const actualSpacingM = distM / samples;
-    // Web Mercator Earth Circumference = 40075016.68 meters
+    const actualSpacingM = profileLengthM / samples;
     let zoom = Math.floor(Math.log2(40075016.68 / (256 * actualSpacingM)));
-    zoom = Math.max(5, Math.min(14, zoom)); // Clamp between zoom 5 (global) and 14 (high-res)
+    zoom = Math.max(5, Math.min(14, zoom));
 
-    const startXM = lonToMercatorX(obs.longitude_deg);
-    const startYM = latToMercatorY(obs.latitude_deg);
-    const endXM = lonToMercatorX(tgtLon);
-    const endYM = latToMercatorY(tgtLat);
+    const obsXM = lonToMercatorX(obs.longitude_deg);
+    const obsYM = latToMercatorY(obs.latitude_deg);
+    const tgtXM = lonToMercatorX(tgtLon);
+    const tgtYM = latToMercatorY(tgtLat);
 
     const xs = new Float64Array(samples + 1);
     const ys = new Float64Array(samples + 1);
 
+    // Interpolate from the horizon cut-off point down to the target
+    const startF = 1.0 - profileLengthM / Math.max(1, distM);
+
     for (let i = 0; i <= samples; i++) {
-      const f = i / samples;
-      xs[i] = startXM + (endXM - startXM) * f;
-      ys[i] = startYM + (endYM - startYM) * f;
+      const stepF = i / samples;
+      const f = startF + stepF * (profileLengthM / Math.max(1, distM));
+      xs[i] = obsXM + (tgtXM - obsXM) * f;
+      ys[i] = obsYM + (tgtYM - obsYM) * f;
     }
 
-    // 4. Bulk fetch the profile elevations using our synchronous tile grid sampler
     const elevations = await provider.sampleGrid(xs, ys, zoom);
 
-    const points: { x: number; y: number }[] = [];
-    for (let i = 0; i <= samples; i++) {
-      points.push({ x: distM * (i / samples), y: Math.max(0, elevations[i]) });
+    let finalObsAlt = obs.altitude_m;
+    if (obs.kind === "ground") {
+      const rawObsTerrain = await provider.samplePoint(obsXM, obsYM, zoom);
+      finalObsAlt = Math.max(0, rawObsTerrain) + clearanceRef.current;
+    }
+    const finalTgtAlt =
+      Math.max(0, elevations[samples]) + targetHeightRef.current * 1000;
+
+    // 2. Exact Spherical Polar Math for Earth Curvature
+    const R = 6371000;
+    const At = R + finalTgtAlt;
+    const Ao = R + finalObsAlt;
+    const Theta = distM / R;
+
+    let Minv = 0;
+    if (Theta > 1e-7) {
+      Minv = (Ao * Math.cos(Theta) - At) / (Ao * Math.sin(Theta));
     }
 
-    const obsElev = points[0].y;
-    const tgtElev = points[samples].y;
-
-    let finalObsAlt = obs.altitude_m;
-    if (obs.kind === "ground") finalObsAlt = obsElev + clearanceRef.current;
-
-    const finalTgtAlt = tgtElev + targetHeightRef.current * 1000;
-
+    const points: { x: number; y: number; rayAlt: number }[] = [];
     let minElev = Math.min(finalObsAlt, finalTgtAlt);
-    let maxElev = Math.max(finalObsAlt, finalTgtAlt);
+    let maxElev = 0;
     let isBlocked = false;
 
     for (let i = 0; i <= samples; i++) {
-      const f = i / samples;
-      const rayAlt = finalObsAlt + f * (finalTgtAlt - finalObsAlt);
-      const elev = points[i].y;
-      minElev = Math.min(minElev, elev);
-      maxElev = Math.max(maxElev, elev);
+      const elev = Math.max(0, elevations[i]);
 
-      // Ignore the immediate first and last 2% of the ray to prevent clipping the observer/target
-      if (elev > rayAlt && f > 0.02 && f < 0.98) isBlocked = true;
+      const surfDistFromTgt = profileLengthM * (1.0 - i / samples);
+      const theta = surfDistFromTgt / R;
+      const denom = Math.cos(theta) - Minv * Math.sin(theta);
+
+      let rayAlt = -R; // Plunge underground if infinite
+      if (denom > 0) {
+        rayAlt = At / denom - R;
+      }
+
+      const distFromTarget = surfDistFromTgt;
+      const distFromObserver = distM - surfDistFromTgt;
+
+      // FIX: Use an absolute 150-meter physical buffer to prevent self-shadowing,
+      // rather than a percentage of the total distance.
+      if (distFromObserver > 150 && distFromTarget > 150) {
+        if (rayAlt < 0 || elev > rayAlt) {
+          isBlocked = true;
+        }
+      }
+
+      points.push({ x: distM - surfDistFromTgt, y: elev, rayAlt });
+      minElev = Math.min(minElev, elev, Math.max(0, rayAlt));
+      maxElev = Math.max(maxElev, elev);
+    }
+
+    // 3. Smart Y-Axis scaling to prevent Space sensors from squashing the mountains
+    let graphMaxElev = Math.max(finalTgtAlt, maxElev) + 2000;
+    if (startF === 0 && finalObsAlt < 50000) {
+      // If observer is in the frame and not in space, ensure they fit on the chart
+      graphMaxElev = Math.max(graphMaxElev, finalObsAlt + 500);
     }
 
     return {
       profile: points,
+      profileLengthM,
       minElev,
-      maxElev,
+      maxElev: graphMaxElev,
       isBlocked,
       finalObsAlt,
       finalTgtAlt,
@@ -523,51 +572,65 @@ export function ViewshedApp() {
       const [lon, lat] = toLonLat(evt.coordinate);
       const vSource = validationLayerRef.current.getSource();
 
-      // 1. Editor Map Pick
+      // 1. Editor Map Pick (Only execute if Editor is actually open)
       if (mapPickWaitingRef.current !== null) {
-        const idx = mapPickWaitingRef.current;
-        const updated = [...observersRef.current];
-        updated[idx] = {
-          ...updated[idx],
-          latitude_deg: lat,
-          longitude_deg: lon,
-        };
-        setObservers(updated);
-        observersRef.current = updated;
-        setMapPickWaitingIdx(null);
-        mapPickWaitingRef.current = null;
-        map.getTargetElement().style.cursor = "";
-        setInspectorText(
-          `Updated ${updated[idx].name} to ${lat.toFixed(5)}, ${lon.toFixed(
-            5
-          )}`
-        );
-        vSource?.clear();
-        invalidateAndRecompute();
-        return;
+        if (!showEditorRef.current) {
+          // Clean up if they closed the editor while waiting for a click
+          setMapPickWaitingIdx(null);
+          mapPickWaitingRef.current = null;
+          map.getTargetElement().style.cursor = "";
+        } else {
+          const idx = mapPickWaitingRef.current;
+          const updated = [...observersRef.current];
+          updated[idx] = {
+            ...updated[idx],
+            latitude_deg: lat,
+            longitude_deg: lon,
+          };
+          setObservers(updated);
+          observersRef.current = updated;
+          setMapPickWaitingIdx(null);
+          mapPickWaitingRef.current = null;
+          map.getTargetElement().style.cursor = "";
+          setInspectorText(
+            `Updated ${updated[idx].name} to ${lat.toFixed(5)}, ${lon.toFixed(
+              5
+            )}`
+          );
+          vSource?.clear();
+          invalidateAndRecompute();
+          return;
+        }
       }
 
-      // 2. 'T' (Teleport) Modifier
+      // 2. 'T' (Teleport) Modifier (Block if Editor is closed)
       if (keysRef.current.t) {
-        const idx = activeCollectorRef.current;
-        const updated = [...observersRef.current];
-        updated[idx] = {
-          ...updated[idx],
-          latitude_deg: lat,
-          longitude_deg: lon,
-        };
-        setObservers(updated);
-        observersRef.current = updated;
-        setInspectorText(
-          `Teleported ${updated[idx].name} to ${lat.toFixed(5)}, ${lon.toFixed(
-            5
-          )}`
-        );
-        vSource?.clear();
-        invalidateAndRecompute();
-        return;
+        if (!showEditorRef.current) {
+          setInspectorText("Editor must be open to move collectors.");
+          // Do not return here; let it fall through to clean up the blue dot in step 4
+        } else {
+          const idx = activeCollectorRef.current;
+          const updated = [...observersRef.current];
+          updated[idx] = {
+            ...updated[idx],
+            latitude_deg: lat,
+            longitude_deg: lon,
+          };
+          setObservers(updated);
+          observersRef.current = updated;
+          setInspectorText(
+            `Teleported ${updated[idx].name} to ${lat.toFixed(
+              5
+            )}, ${lon.toFixed(5)}`
+          );
+          vSource?.clear();
+          invalidateAndRecompute();
+          return;
+        }
       }
 
+      // 3. 'I' (Inspect) Modifier
+      // ... (Keep your existing Inspect and Default Click logic exactly as is)
       // 3. 'I' (Inspect) Modifier
       if (keysRef.current.i) {
         const activeIdxs = Array.from(activeCollectorsRef.current);
@@ -629,6 +692,7 @@ export function ViewshedApp() {
             obsAlt: obs.altitude_m,
             tgtAlt: targetHeightRef.current * 1000,
             distM,
+            profileLengthM: distM,
             profile: [],
             minElev: 0,
             maxElev: 0,
@@ -658,6 +722,7 @@ export function ViewshedApp() {
                     ...updatedResults[tIdx],
                     loading: false,
                     profile: data.profile,
+                    profileLengthM: data.profileLengthM,
                     minElev: data.minElev,
                     maxElev: data.maxElev,
                     isBlocked: data.isBlocked,
@@ -796,29 +861,47 @@ export function ViewshedApp() {
     const activeObsColor =
       observersRef.current[activeRes.idx]?.color || "#7c3aed";
 
-    let pathD = "M 0,100 L 100,100 Z";
+    let terrainPathD = "M 0,100 L 100,100 Z";
+    let rayPathD = "";
     let obsY = 100,
       tgtY = 100;
 
     if (activeRes.profile.length > 0) {
       const pY = (elev: number) => {
         const range = activeRes.maxElev - activeRes.minElev || 1;
-        return 90 - ((elev - activeRes.minElev) / range) * 80;
+        // Clamp visuals so space rays cleanly exit the ceiling
+        const mappedY = 90 - ((elev - activeRes.minElev) / range) * 80;
+        return Math.max(-10, Math.min(110, mappedY));
       };
 
-      pathD =
+      terrainPathD =
         `M 0,100 ` +
         activeRes.profile
-          .map((p, i) => {
-            const px = (i / (activeRes.profile.length - 1)) * 100;
-            return `L ${px},${pY(p.y)}`;
-          })
+          .map(
+            (p, i) =>
+              `L ${(i / (activeRes.profile.length - 1)) * 100},${pY(p.y)}`
+          )
           .join(" ") +
         ` L 100,100 Z`;
 
-      obsY = pY(activeRes.obsAlt);
-      tgtY = pY(activeRes.tgtAlt);
+      // Plot the Ray as a true curve
+      rayPathD =
+        `M 0,${pY(activeRes.profile[0].rayAlt)} ` +
+        activeRes.profile
+          .map(
+            (p, i) =>
+              `L ${(i / (activeRes.profile.length - 1)) * 100},${pY(p.rayAlt)}`
+          )
+          .join(" ");
+
+      obsY = pY(activeRes.profile[0].rayAlt);
+      tgtY = pY(activeRes.profile[activeRes.profile.length - 1].rayAlt);
     }
+
+    const isOffscreen = activeRes.distM > activeRes.profileLengthM + 10;
+    const leftLabel = isOffscreen
+      ? `Ray entering atmosphere (<-- ${activeRes.obsName})`
+      : `${activeRes.obsName} (${formatElev(activeRes.obsAlt)})`;
 
     return (
       <>
@@ -830,17 +913,15 @@ export function ViewshedApp() {
           style={{ position: "absolute", inset: 0, overflow: "visible" }}
         >
           <path
-            d={pathD}
+            d={terrainPathD}
             fill="#cbd5e1"
             stroke="#94a3b8"
             strokeWidth="2"
             vectorEffect="non-scaling-stroke"
           />
-          <line
-            x1="0"
-            y1={obsY}
-            x2="100"
-            y2={tgtY}
+          <path
+            d={rayPathD}
+            fill="none"
             stroke={activeRes.isBlocked ? "#dc2626" : activeObsColor}
             strokeWidth="3"
             strokeDasharray="6,4"
@@ -857,7 +938,7 @@ export function ViewshedApp() {
             zIndex: 10,
           }}
         >
-          <HtmlPin color={activeObsColor} />
+          <HtmlPin color={isOffscreen ? "#94a3b8" : activeObsColor} />
         </div>
         <div
           style={{
@@ -874,7 +955,7 @@ export function ViewshedApp() {
             zIndex: 10,
           }}
         >
-          {activeRes.obsName} ({formatElev(activeRes.obsAlt)})
+          {leftLabel}
         </div>
 
         <div
@@ -1290,6 +1371,7 @@ export function ViewshedApp() {
                       >
                         <option value="ground">Ground</option>
                         <option value="aircraft">Aircraft</option>
+                        <option value="leo">LEO</option>
                         <option value="geo">GEO</option>
                       </select>
                     </td>

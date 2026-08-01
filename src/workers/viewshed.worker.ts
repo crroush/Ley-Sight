@@ -27,7 +27,7 @@ const LOS_SURFACE_FLOOR_M = 0.0;
 
 export interface CollectorState {
   name: string;
-  kind: "ground" | "airborne" | "geo";
+  kind: "ground" | "aircraft" | "geo" | "leo";
   positionEcefM: [number, number, number];
   altitudeM?: number;
 }
@@ -350,7 +350,6 @@ function clampDemToVisibleSurface(elevationM: Float64Array) {
 }
 
 const terrainProvider = new TerrariumTerrainProvider();
-
 
 // ============================================================================
 // 4. Observer-Inclusive Analysis Grid & Bilinear Expansion
@@ -784,8 +783,13 @@ self.onmessage = async (event) => {
         profiler.end(`Observer ${idx} - Analysis Grid Projection`);
 
         profiler.start(`Observer ${idx} - Fetch Analysis Terrain`);
-        const rawAnalysisTerrains = await terrainProvider.sampleGrid(reqX, reqY, zoom);
-        const { surface: aTerrains } = clampDemToVisibleSurface(rawAnalysisTerrains);
+        const rawAnalysisTerrains = await terrainProvider.sampleGrid(
+          reqX,
+          reqY,
+          zoom
+        );
+        const { surface: aTerrains } =
+          clampDemToVisibleSurface(rawAnalysisTerrains);
         profiler.end(`Observer ${idx} - Fetch Analysis Terrain`);
         const aDist = surfaceDistanceM(collectorLat, collectorLon, aLat, aLon);
         const aAngles = new Float64Array(aNx * aNy);
@@ -1042,7 +1046,10 @@ self.onmessage = async (event) => {
     console.error("Worker Computation Error:", err);
     self.postMessage({
       type: "COMPUTE_FAILED",
-      payload: { error: err.message || String(err) },
+      payload: {
+        runId, // Add runId here so the frontend can check if this failure is obsolete
+        error: err.message || String(err),
+      },
     });
   }
 };
