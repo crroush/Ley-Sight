@@ -119,6 +119,10 @@ export function ViewshedApp() {
   const [viewQuestion, setViewQuestion] = useState<string>("coverage-all");
   const [singleDetail, setSingleDetail] = useState<string>("blocked");
   const [targetHeightAgl, setTargetHeightAgl] = useState<number>(0.0);
+  const [targetHeightDraft, setTargetHeightDraft] = useState<string>("0");
+  const [targetHeightInputState, setTargetHeightInputState] = useState<
+    "clean" | "dirty" | "invalid"
+  >("clean");
   const [obstructionHeightM, setObstructionHeightM] = useState<number>(0.0);
   const [collectorClearanceM, setCollectorClearanceM] = useState<number>(10.0);
 
@@ -1328,19 +1332,60 @@ export function ViewshedApp() {
               type="number"
               step="0.1"
               min="0"
-              value={targetHeightAgl}
+              value={targetHeightDraft}
               onChange={(e) => {
-                syncSet.targetHeight(parseFloat(e.target.value) || 0);
+                setTargetHeightDraft(e.target.value);
+                setTargetHeightInputState("dirty");
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setTargetHeightDraft(String(targetHeightRef.current));
+                  setTargetHeightInputState("clean");
+                  return;
+                }
+                if (e.key !== "Enter") return;
+
+                const nextHeight = Number(targetHeightDraft);
+                if (
+                  targetHeightDraft.trim() === "" ||
+                  !Number.isFinite(nextHeight) ||
+                  nextHeight < 0
+                ) {
+                  setTargetHeightInputState("invalid");
+                  return;
+                }
+
+                syncSet.targetHeight(nextHeight);
+                setTargetHeightDraft(String(nextHeight));
+                setTargetHeightInputState("clean");
                 invalidateAndRecompute();
               }}
+              title="Target height above the sampled DEM. Press Enter to update the viewshed."
               style={{
                 width: "80px",
                 padding: "3px",
-                border: "1px solid #94a3b8",
+                border: `1px solid ${
+                  targetHeightInputState === "invalid"
+                    ? "#dc2626"
+                    : targetHeightInputState === "dirty"
+                    ? "#d97706"
+                    : "#94a3b8"
+                }`,
+                background:
+                  targetHeightInputState === "invalid"
+                    ? "#fef2f2"
+                    : targetHeightInputState === "dirty"
+                    ? "#fffbeb"
+                    : "#ffffff",
                 borderRadius: "4px",
               }}
             />
-            <span style={{ marginLeft: "4px" }}>km above bare-earth DEM</span>
+            <span
+              style={{ marginLeft: "4px" }}
+              title="Target height above the sampled DEM."
+            >
+              km
+            </span>
           </div>
 
           <button
