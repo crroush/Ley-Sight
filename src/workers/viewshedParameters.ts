@@ -3,6 +3,11 @@ export type ViewshedHeightParameters = {
   obstructionHeightAglM: number;
 };
 
+/** Interim AWS Terrarium surface policy: missing and bathymetric values use MSL. */
+export function visibleTerrainElevationM(elevationM: number): number {
+  return Number.isFinite(elevationM) ? Math.max(0, elevationM) : 0;
+}
+
 export function validateViewshedHeightParameters(
   parameters: ViewshedHeightParameters,
 ): ViewshedHeightParameters {

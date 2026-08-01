@@ -15,6 +15,7 @@ import {
   addObstructionHeightToDem,
   effectiveMinimumVisibleAltitudeM,
   effectiveObserverElevationM,
+  visibleTerrainElevationM,
   validateViewshedHeightParameters,
 } from "./viewshedParameters";
 
@@ -382,7 +383,9 @@ export function clampDemToVisibleSurface(elevationM: Float64Array) {
   const surface = new Float64Array(elevationM.length);
   let missingSampleCount = 0;
   for (let i = 0; i < elevationM.length; i++) {
-    if (Number.isFinite(elevationM[i])) surface[i] = elevationM[i];
+    if (Number.isFinite(elevationM[i])) {
+      surface[i] = visibleTerrainElevationM(elevationM[i]);
+    }
     else {
       surface[i] = MISSING_DEM_FALLBACK_M;
       missingSampleCount++;
@@ -747,7 +750,7 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
       terrainSampleCount++;
       if (!Number.isFinite(rawObsTerrain)) missingTerrainSampleCount++;
       const observerTerrainM = Number.isFinite(rawObsTerrain)
-        ? rawObsTerrain
+        ? visibleTerrainElevationM(rawObsTerrain)
         : MISSING_DEM_FALLBACK_M;
       const effectiveAltM = effectiveObserverElevationM(
         observer.kind,
@@ -1070,6 +1073,7 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
             sampleCount: terrainSampleCount,
             missingSampleCount: missingTerrainSampleCount,
             missingSamplePolicy: "sea-level",
+            negativeElevationPolicy: "clamp-to-sea-level",
           },
         },
       },

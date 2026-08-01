@@ -8,6 +8,7 @@ import {
   isProfileSampleBlocked,
   modeledProfileElevationM,
   validateViewshedHeightParameters,
+  visibleTerrainElevationM,
 } from "./viewshedParameters";
 
 test("ground observer altitude is derived solely from DEM and clearance", () => {
@@ -61,6 +62,25 @@ test("finite terrain below sea level is preserved throughout modeling", () => {
   assert.deepEqual(
     Array.from(addObstructionHeightToDem(new Float64Array([-100, 0, 20]), 5)),
     [-95, 5, 25],
+  );
+});
+
+test("interim visible-surface policy flattens Terrarium bathymetry", () => {
+  assert.equal(visibleTerrainElevationM(-11_000), 0);
+  assert.equal(visibleTerrainElevationM(-1), 0);
+  assert.equal(visibleTerrainElevationM(0), 0);
+  assert.equal(visibleTerrainElevationM(125), 125);
+  assert.equal(visibleTerrainElevationM(Number.NaN), 0);
+  assert.equal(
+    effectiveObserverElevationM(
+      "ground",
+      -11_000,
+      visibleTerrainElevationM(-11_000),
+      2,
+      100_000,
+    ),
+    2,
+    "ground observers use the same sea-level surface as the analysis grid",
   );
 });
 

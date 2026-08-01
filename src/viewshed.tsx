@@ -21,6 +21,7 @@ import {
   isProfileSampleBlocked,
   modeledProfileElevationM,
   validateViewshedHeightParameters,
+  visibleTerrainElevationM,
 } from "./workers/viewshedParameters";
 
 const WGS84_A_M = 6378137.0;
@@ -503,17 +504,17 @@ export function ViewshedApp() {
     if (missingProfileSamples === elevations.length) {
       throw new Error("Terrain could not be loaded for this profile");
     }
-    if (missingProfileSamples > 0) {
-      for (let i = 0; i < elevations.length; i++) {
-        if (!Number.isFinite(elevations[i])) elevations[i] = 0;
-      }
+    // Mapzen ocean samples contain bathymetry. Until a coastline mask is
+    // available, model every negative sample as mean sea level.
+    for (let i = 0; i < elevations.length; i++) {
+      elevations[i] = visibleTerrainElevationM(elevations[i]);
     }
 
     let finalObsAlt = obs.altitude_m;
     if (obs.kind === "ground") {
       const rawObsTerrain = await provider.samplePoint(obsXM, obsYM, zoom);
       const observerTerrain = Number.isFinite(rawObsTerrain)
-        ? rawObsTerrain
+        ? visibleTerrainElevationM(rawObsTerrain)
         : 0;
       if (!Number.isFinite(rawObsTerrain)) missingProfileSamples++;
       finalObsAlt = groundCollectorElevationM(
@@ -1090,12 +1091,13 @@ export function ViewshedApp() {
     if (!Number.isFinite(elevationM)) return;
 
     const updated = [...observersRef.current];
-    updated[idx] = { ...observer, altitude_m: elevationM };
+    const visibleElevationM = visibleTerrainElevationM(elevationM);
+    updated[idx] = { ...observer, altitude_m: visibleElevationM };
     setObservers(updated);
     observersRef.current = updated;
     clearObserverNumberDraft(idx, "altitude_m");
     setInspectorText(
-      `${observer.name} DEM elevation: ${elevationM.toFixed(1)} m`
+      `${observer.name} DEM elevation: ${visibleElevationM.toFixed(1)} m`
     );
     invalidateAndRecompute();
   };
