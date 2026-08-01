@@ -218,6 +218,8 @@ function appendableDataset(
     extent: dataset.extent,
     invalidRows: summary.invalidRows,
     invalidTimestamps: summary.invalidTimestamps ?? 0,
+    coordinateFailures: summary.coordinateFailures ?? 0,
+    projectionClampedRows: summary.projectionClampedRows ?? 0,
     timeMin: summary.timeMin,
     timeMax: summary.timeMax,
   };
@@ -2122,7 +2124,7 @@ export function App() {
         <span>{summary?.name ?? "No dataset loaded"}</span>
         <span>
           {summary
-            ? `${summary.rowCount.toLocaleString()} rows · ${summary.invalidRows.toLocaleString()} skipped · ${(summary.invalidTimestamps ?? 0).toLocaleString()} invalid timestamps`
+            ? `${summary.rowCount.toLocaleString()} rows · ${(summary.coordinateFailures ?? 0).toLocaleString()} coordinate failures · ${(summary.projectionClampedRows ?? 0).toLocaleString()} projection-clamped · ${summary.invalidRows.toLocaleString()} other invalid · ${(summary.invalidTimestamps ?? 0).toLocaleString()} invalid timestamps`
             : "Choose Load CSV to begin"}
         </span>
         <span className="status-spacer" />

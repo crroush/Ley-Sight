@@ -127,7 +127,11 @@ export function CsvMappingDialog({
         <div className="dialog-note">
           Files stay in this browser session. Date/time words and common
           coordinate names are detected automatically; every mapping remains
-          editable before loading.
+          editable before loading. Longitude must be between −180° and 180°
+          and latitude between −90° and 90°; invalid coordinates are skipped,
+          never wrapped. Latitudes beyond Web Mercator's ±85.05112878° limit
+          are retained but clamped at that limit for display and reported as
+          projection-clamped rows.
         </div>
         <div className="dialog-actions">
           <button className="button secondary" onClick={onCancel}>Cancel</button>

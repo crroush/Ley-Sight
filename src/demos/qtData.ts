@@ -211,6 +211,8 @@ export function createQtDataset(
       rowCount: count,
       invalidRows: 0,
       invalidTimestamps: 0,
+      coordinateFailures: 0,
+      projectionClampedRows: 0,
       timeMin: timeMinimum === Infinity ? Number.NaN : timeMinimum,
       timeMax: timeMaximum === -Infinity ? Number.NaN : timeMaximum,
     },
