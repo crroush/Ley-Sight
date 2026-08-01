@@ -18,8 +18,10 @@ import { Circle as CircleStyle, Fill, Stroke, Style } from "ol/style.js";
 import { TerrariumTerrainProvider } from "./workers/terrain";
 import {
   groundCollectorElevationM,
+  isProfileSampleBlocked,
   modeledProfileElevationM,
   validateViewshedHeightParameters,
+  visibleTerrainElevationM,
 } from "./workers/viewshedParameters";
 
 const WGS84_A_M = 6378137.0;
@@ -55,6 +57,7 @@ type ProfileResult = {
   minElev: number;
   maxElev: number;
   isBlocked: boolean;
+  error?: string;
 };
 
 export function toLatLon(
@@ -115,6 +118,7 @@ export function ViewshedApp() {
   const lastExtentStrRef = useRef<string>("");
   const isComputingRef = useRef<boolean>(false);
   const runIdRef = useRef<number>(0);
+  const profileRequestIdRef = useRef<number>(0);
 
   // Application State
   const [viewQuestion, setViewQuestion] = useState<string>("coverage-all");
@@ -135,6 +139,7 @@ export function ViewshedApp() {
   const [losOpacity, setLosOpacity] = useState<number>(65);
   const [baseMapOpacity, setBaseMapOpacity] = useState<number>(100);
   const [isComputing, setIsComputing] = useState<boolean>(false);
+  const [terrainWarning, setTerrainWarning] = useState<string | null>(null);
   const [advancedExpanded, setAdvancedExpanded] = useState<boolean>(false);
   const [observersDropdownOpen, setObserversDropdownOpen] =
     useState<boolean>(false);
@@ -293,6 +298,12 @@ export function ViewshedApp() {
 
         if (event.data.type === "COMPUTE_COMPLETE") {
           const { buffer, nx, ny, bounds } = payload;
+          const terrain = payload.terrain;
+          setTerrainWarning(
+            terrain?.degraded
+              ? `Terrain coverage is degraded: ${terrain.missingSampleCount} of ${terrain.sampleCount} samples were unavailable and modeled at sea level.`
+              : null
+          );
 
           if (buffer && nx && ny && bounds) {
             const canvas = document.createElement("canvas");
@@ -332,6 +343,7 @@ export function ViewshedApp() {
           }
         } else if (event.data.type === "COMPUTE_FAILED") {
           console.error("Worker Computation Error:", payload.error);
+          setTerrainWarning(`Terrain analysis failed: ${payload.error}`);
         }
 
         // 3. Fallback: If we reached here (missing buffer, failed ctx, or COMPUTE_FAILED),
@@ -445,7 +457,8 @@ export function ViewshedApp() {
     obs: Observer,
     tgtLat: number,
     tgtLon: number,
-    distM: number
+    distM: number,
+    requestId: number,
   ) => {
     const { obstructionHeightAglM } = validateViewshedHeightParameters({
       collectorClearanceM: obs.antennaHeightAglM,
@@ -485,17 +498,39 @@ export function ViewshedApp() {
     }
 
     const elevations = await provider.sampleGrid(xs, ys, zoom);
+    let missingProfileSamples = Array.from(elevations).filter(
+      (elevation) => !Number.isFinite(elevation)
+    ).length;
+    if (missingProfileSamples === elevations.length) {
+      throw new Error("Terrain could not be loaded for this profile");
+    }
+    // Mapzen ocean samples contain bathymetry. Until a coastline mask is
+    // available, model every negative sample as mean sea level.
+    for (let i = 0; i < elevations.length; i++) {
+      elevations[i] = visibleTerrainElevationM(elevations[i]);
+    }
 
     let finalObsAlt = obs.altitude_m;
     if (obs.kind === "ground") {
       const rawObsTerrain = await provider.samplePoint(obsXM, obsYM, zoom);
+      const observerTerrain = Number.isFinite(rawObsTerrain)
+        ? visibleTerrainElevationM(rawObsTerrain)
+        : 0;
+      if (!Number.isFinite(rawObsTerrain)) missingProfileSamples++;
       finalObsAlt = groundCollectorElevationM(
-        rawObsTerrain,
+        observerTerrain,
         obs.antennaHeightAglM
       );
     }
+    if (missingProfileSamples > 0) {
+      if (requestId === profileRequestIdRef.current) {
+        setTerrainWarning(
+          `Terrain coverage is degraded: ${missingProfileSamples} profile samples were unavailable and modeled at sea level.`
+        );
+      }
+    }
     const finalTgtAlt =
-      Math.max(0, elevations[samples]) + targetHeightRef.current * 1000;
+      elevations[samples] + targetHeightRef.current * 1000;
 
     // 2. Exact Spherical Polar Math for Earth Curvature
     const R = 6371000;
@@ -534,7 +569,7 @@ export function ViewshedApp() {
       // Dynamically ignore only the exact first and last sample indices to prevent
       // pixel self-shadowing, and add a 0.5m grazing tolerance.
       if (i > 0 && i < samples) {
-        if (rayAlt < 0 || elev > rayAlt + 0.5) {
+        if (isProfileSampleBlocked(elev, rayAlt)) {
           isBlocked = true;
         }
       }
@@ -560,7 +595,7 @@ export function ViewshedApp() {
       graphMaxElev = Math.max(graphMaxElev, finalObsAlt) + elevRange * 0.2;
 
       // Add a 5% bottom margin so the terrain doesn't touch the floor of the SVG
-      minElev = Math.max(0, minElev - elevRange * 0.05);
+      minElev -= elevRange * 0.05;
     } else {
       // Space/GEO links: Add 1500m of headroom so the ray plunges from the ceiling
       graphMaxElev += 1500;
@@ -670,6 +705,7 @@ export function ViewshedApp() {
       if (keysRef.current.i) {
         const activeIdxs = Array.from(activeCollectorsRef.current);
         if (activeIdxs.length === 0) return;
+        const profileRequestId = ++profileRequestIdRef.current;
 
         setInspectorText(
           `Inspecting Profile Target: ${lat.toFixed(6)}°, ${lon.toFixed(6)}°`
@@ -746,10 +782,11 @@ export function ViewshedApp() {
             lat,
             lon
           );
-          fetchDemProfile(obs, lat, lon, distM)
+          fetchDemProfile(obs, lat, lon, distM, profileRequestId)
             .then((data) => {
               setProfileData((prev) => {
-                if (!prev) return prev;
+                if (!prev || profileRequestId !== profileRequestIdRef.current)
+                  return prev;
                 const updatedResults = [...prev.results];
                 const tIdx = updatedResults.findIndex((r) => r.idx === idx);
                 if (tIdx !== -1) {
@@ -763,18 +800,39 @@ export function ViewshedApp() {
                     isBlocked: data.isBlocked,
                     obsAlt: data.finalObsAlt,
                     tgtAlt: data.finalTgtAlt,
+                    error: undefined,
                   };
                 }
                 return { ...prev, results: updatedResults };
               });
             })
-            .catch(() => {});
+            .catch((error: unknown) => {
+              if (profileRequestId !== profileRequestIdRef.current) return;
+              const message = error instanceof Error
+                ? error.message
+                : String(error);
+              setTerrainWarning(`Terrain profile failed: ${message}`);
+              setProfileData((prev) => {
+                if (!prev) return prev;
+                const updatedResults = [...prev.results];
+                const tIdx = updatedResults.findIndex((r) => r.idx === idx);
+                if (tIdx !== -1) {
+                  updatedResults[tIdx] = {
+                    ...updatedResults[tIdx],
+                    loading: false,
+                    error: message,
+                  };
+                }
+                return { ...prev, results: updatedResults };
+              });
+            });
         });
         return;
       }
       // ... (Keep the map.on("click") block exactly as is)
 
       // 4. Default plain click (No Modifiers)
+      profileRequestIdRef.current++;
       vSource?.clear();
       validationLayerRef.current.changed();
       map.renderSync();
@@ -1033,12 +1091,13 @@ export function ViewshedApp() {
     if (!Number.isFinite(elevationM)) return;
 
     const updated = [...observersRef.current];
-    updated[idx] = { ...observer, altitude_m: Math.max(0, elevationM) };
+    const visibleElevationM = visibleTerrainElevationM(elevationM);
+    updated[idx] = { ...observer, altitude_m: visibleElevationM };
     setObservers(updated);
     observersRef.current = updated;
     clearObserverNumberDraft(idx, "altitude_m");
     setInspectorText(
-      `${observer.name} DEM elevation: ${Math.max(0, elevationM).toFixed(1)} m`
+      `${observer.name} DEM elevation: ${visibleElevationM.toFixed(1)} m`
     );
     invalidateAndRecompute();
   };
@@ -1077,6 +1136,14 @@ export function ViewshedApp() {
           }}
         >
           Sampling Exact DEM Terrain...
+        </div>
+      );
+    }
+
+    if (activeRes.error) {
+      return (
+        <div role="alert" style={{ padding: "24px", color: "#991b1b", fontWeight: 600 }}>
+          Terrain profile unavailable: {activeRes.error}
         </div>
       );
     }
@@ -1261,6 +1328,11 @@ export function ViewshedApp() {
           zIndex: 10,
         }}
       >
+        {terrainWarning && (
+          <div role="alert" style={{ color: "#991b1b", background: "#fee2e2", border: "1px solid #ef4444", padding: "6px 10px", borderRadius: "4px", fontWeight: 600 }}>
+            {terrainWarning}
+          </div>
+        )}
         {/* Main Controls Row */}
         <div
           style={{
@@ -1907,7 +1979,7 @@ export function ViewshedApp() {
                   invalidateAndRecompute();
                 }}
                 style={{ width: "60px", padding: "2px 4px" }}
-                title="Uniform height added to all terrain to represent surface clutter (e.g., trees/buildings)."
+                title="Uniform height added to terrain to represent surface clutter (e.g., trees/buildings)."
               />{" "}
               m
             </div>

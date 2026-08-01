@@ -13,7 +13,9 @@ import {
 import { TerrariumTerrainProvider, terrainZoomForSpacing } from "./terrain";
 import {
   addObstructionHeightToDem,
+  effectiveMinimumVisibleAltitudeM,
   effectiveObserverElevationM,
+  visibleTerrainElevationM,
   validateViewshedHeightParameters,
 } from "./viewshedParameters";
 
@@ -27,7 +29,9 @@ const TWO_PI = 2.0 * Math.PI;
 const HIGH_ALTITUDE_ANALYTIC_THRESHOLD_M = 100_000.0;
 const DEFAULT_MAXIMUM_MVA_AGL_M = 60_000.0;
 const VISIBILITY_ALTITUDE_TOLERANCE_M = 0.25;
-const LOS_SURFACE_FLOOR_M = 0.0;
+// Missing tiles are modeled as sea level only after they have been counted.
+// This is deliberately a missing-data policy, not a floor on valid terrain.
+const MISSING_DEM_FALLBACK_M = 0.0;
 
 export interface CollectorState {
   name: string;
@@ -375,15 +379,19 @@ class Profiler {
 // ============================================================================
 // 3. DEM Surface Sanitization & Batching
 // ============================================================================
-function clampDemToVisibleSurface(elevationM: Float64Array) {
+export function clampDemToVisibleSurface(elevationM: Float64Array) {
   const surface = new Float64Array(elevationM.length);
+  let missingSampleCount = 0;
   for (let i = 0; i < elevationM.length; i++) {
-    surface[i] = Math.max(
-      Number.isFinite(elevationM[i]) ? elevationM[i] : LOS_SURFACE_FLOOR_M,
-      LOS_SURFACE_FLOOR_M
-    );
+    if (Number.isFinite(elevationM[i])) {
+      surface[i] = visibleTerrainElevationM(elevationM[i]);
+    }
+    else {
+      surface[i] = MISSING_DEM_FALLBACK_M;
+      missingSampleCount++;
+    }
   }
-  return { surface };
+  return { surface, missingSampleCount, sampleCount: elevationM.length };
 }
 
 const terrainProvider = new TerrariumTerrainProvider();
@@ -717,6 +725,8 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
       isVisible: Uint8Array;
       mva: Float32Array;
     }[] = [];
+    let terrainSampleCount = 0;
+    let missingTerrainSampleCount = 0;
     profiler.end("Setup & Grid Generation");
 
     for (const idx of activeCollectorIndices) {
@@ -737,7 +747,11 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
         latToMercatorY(collectorLat),
         zoom
       );
-      const observerTerrainM = Math.max(rawObsTerrain, LOS_SURFACE_FLOOR_M);
+      terrainSampleCount++;
+      if (!Number.isFinite(rawObsTerrain)) missingTerrainSampleCount++;
+      const observerTerrainM = Number.isFinite(rawObsTerrain)
+        ? rawObsTerrain
+        : MISSING_DEM_FALLBACK_M;
       const effectiveAltM = effectiveObserverElevationM(
         observer.kind,
         observer.altitude_m,
@@ -793,8 +807,13 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
         reqY,
         zoom
       );
-      const { surface: aTerrains } =
-        clampDemToVisibleSurface(rawAnalysisTerrains);
+      const sanitizedTerrain = clampDemToVisibleSurface(rawAnalysisTerrains);
+      const { surface: aTerrains } = sanitizedTerrain;
+      terrainSampleCount += sanitizedTerrain.sampleCount;
+      missingTerrainSampleCount += sanitizedTerrain.missingSampleCount;
+      if (sanitizedTerrain.missingSampleCount === sanitizedTerrain.sampleCount) {
+        throw new Error("Terrain could not be loaded for the analysis area");
+      }
       const aObstructionTerrains = addObstructionHeightToDem(
         aTerrains,
         obstructionHeightAglM
@@ -972,7 +991,11 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
             DEFAULT_MAXIMUM_MVA_AGL_M
           );
 
-          const effectiveMva = Math.max(mvaGeo, mvaTer);
+          const effectiveMva = effectiveMinimumVisibleAltitudeM(
+            terrainM,
+            mvaGeo,
+            mvaTer
+          );
           obsMvaArray[pixelIdx] = effectiveMva;
           obsVisArray[pixelIdx] =
             targetHeightM + VISIBILITY_ALTITUDE_TOLERANCE_M >= effectiveMva
@@ -1044,6 +1067,14 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
           nx: outputCols,
           ny: outputRows,
           bounds: [grid.xMinM, grid.yMinM, grid.xMaxM, grid.yMaxM],
+          terrain: {
+            available: missingTerrainSampleCount < terrainSampleCount,
+            degraded: missingTerrainSampleCount > 0,
+            sampleCount: terrainSampleCount,
+            missingSampleCount: missingTerrainSampleCount,
+            missingSamplePolicy: "sea-level",
+            negativeElevationPolicy: "clamp-to-sea-level",
+          },
         },
       },
       [buffer]
