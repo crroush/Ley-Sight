@@ -71,6 +71,7 @@ export function inferCsvColumnMapping(
     latitude,
     longitude,
     time,
+    timestampInterpretation: "automatic",
     semiMajor,
     semiMinor,
     tilt,
