@@ -13,7 +13,7 @@ import {
 import { TerrariumTerrainProvider, terrainZoomForSpacing } from "./terrain";
 import {
   addObstructionHeightToDem,
-  groundCollectorElevationM,
+  effectiveObserverElevationM,
   validateViewshedHeightParameters,
 } from "./viewshedParameters";
 
@@ -735,20 +735,18 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
         zoom
       );
       const observerTerrainM = Math.max(rawObsTerrain, LOS_SURFACE_FLOOR_M);
-      const effectiveAltM = Math.max(
-        observer.altitude_m || 0,
-        observer.altitude_m! < HIGH_ALTITUDE_ANALYTIC_THRESHOLD_M
-          ? observer.kind === "ground"
-            ? groundCollectorElevationM(observerTerrainM, collectorClearanceM)
-            : observerTerrainM
-          : 0
+      const effectiveAltM = effectiveObserverElevationM(
+        observer.kind,
+        observer.altitude_m,
+        observerTerrainM,
+        collectorClearanceM,
+        HIGH_ALTITUDE_ANALYTIC_THRESHOLD_M
       );
       const obsEcef = geodeticToEcef(
         collectorLat,
         collectorLon,
         effectiveAltM
       );
-      const isGeo = effectiveAltM >= HIGH_ALTITUDE_ANALYTIC_THRESHOLD_M;
 
       let viewportHorizonBefore,
         viewportDistances,
@@ -756,184 +754,146 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
         viewportLatArr,
         viewportLonArr;
 
-      if (isGeo) {
-        profiler.start(`Observer ${idx} - GEO Target Geodesy`);
-        const numNodes = (outputRows + 1) * (outputCols + 1);
-        viewportLatArr = new Float64Array(numNodes);
-        viewportLonArr = new Float64Array(numNodes);
-        const reqX = new Float64Array(numNodes);
-        const reqY = new Float64Array(numNodes);
+      profiler.start(`Observer ${idx} - Analysis Grid Projection`);
+      const analysisGrid = observerInclusiveAnalysisGrid(
+        grid,
+        collectorLat,
+        collectorLon,
+        350000
+      );
+      const aNx = analysisGrid.nx,
+        aNy = analysisGrid.ny;
+      const aLon = new Float64Array(aNx * aNy),
+        aLat = new Float64Array(aNx * aNy);
+      const reqX = new Float64Array(aNx * aNy),
+        reqY = new Float64Array(aNx * aNy);
 
+      for (let r = 0; r < aNy; r++) {
+        const yM = analysisGrid.yMinM + (r + 0.5) * analysisGrid.cellYM;
+        const lat = mercatorYToLat(yM);
+        for (let c = 0; c < aNx; c++) {
+          const wrappedXM = wrapMercatorX(
+            analysisGrid.xMinM + (c + 0.5) * analysisGrid.cellXM
+          );
+          const i = r * aNx + c;
+          aLon[i] = mercatorXToLon(wrappedXM);
+          aLat[i] = lat;
+          reqX[i] = wrappedXM;
+          reqY[i] = yM;
+        }
+      }
+      profiler.end(`Observer ${idx} - Analysis Grid Projection`);
+
+      profiler.start(`Observer ${idx} - Fetch Analysis Terrain`);
+      const rawAnalysisTerrains = await terrainProvider.sampleGrid(
+        reqX,
+        reqY,
+        zoom
+      );
+      const { surface: aTerrains } =
+        clampDemToVisibleSurface(rawAnalysisTerrains);
+      const aObstructionTerrains = addObstructionHeightToDem(
+        aTerrains,
+        obstructionHeightAglM
+      );
+      profiler.end(`Observer ${idx} - Fetch Analysis Terrain`);
+      const aDist = surfaceDistanceM(collectorLat, collectorLon, aLat, aLon);
+      const aAngles = new Float64Array(aNx * aNy);
+      for (let i = 0; i < aAngles.length; i++) {
+        const [tX, tY, tZ] = geodeticToEcef(
+          aLat[i],
+          aLon[i],
+          aObstructionTerrains[i]
+        );
+        aAngles[i] = elevationAngles(
+          obsEcef,
+          collectorLat,
+          collectorLon,
+          tX,
+          tY,
+          tZ
+        );
+      }
+
+      const firstCX = analysisGrid.xMinM + 0.5 * analysisGrid.cellXM;
+      const firstCY = analysisGrid.yMinM + 0.5 * analysisGrid.cellYM;
+      let obsXShift =
+        obsX +
+        Math.round(
+          (0.5 * (analysisGrid.xMinM + analysisGrid.xMaxM) - obsX) /
+            WEB_MERCATOR_WORLD_WIDTH_M
+        ) *
+          WEB_MERCATOR_WORLD_WIDTH_M;
+      const oCol = Math.round((obsXShift - firstCX) / analysisGrid.cellXM);
+      const oRow = Math.round(
+        (latToMercatorY(collectorLat) - firstCY) / analysisGrid.cellYM
+      );
+
+      profiler.start(`Observer ${idx} - Chebyshev Horizon Sweep`);
+      const sweep = await gridHorizonSweep(
+        aAngles,
+        aDist,
+        aNy,
+        aNx,
+        oRow,
+        oCol,
+        runId
+      );
+      profiler.end(`Observer ${idx} - Chebyshev Horizon Sweep`);
+
+      if (analysisGrid.scale === 1) {
+        viewportHorizonBefore = sweep.horizonBeforeRad;
+        viewportDistances = aDist;
+        viewportTerrains = aTerrains;
+        viewportLatArr = aLat;
+        viewportLonArr = aLon;
+      } else {
+        profiler.start(`Observer ${idx} - Bilinear Expansion`);
+        viewportHorizonBefore = bilinearExpandRegularGrid(
+          sweep.horizonBeforeRad,
+          aNy,
+          aNx,
+          outputRows + 1,
+          outputCols + 1,
+          analysisGrid.sourceRowPositions,
+          analysisGrid.sourceColumnPositions
+        );
+        viewportDistances = bilinearExpandRegularGrid(
+          aDist,
+          aNy,
+          aNx,
+          outputRows + 1,
+          outputCols + 1,
+          analysisGrid.sourceRowPositions,
+          analysisGrid.sourceColumnPositions
+        );
+        viewportTerrains = bilinearExpandRegularGrid(
+          aTerrains,
+          aNy,
+          aNx,
+          outputRows + 1,
+          outputCols + 1,
+          analysisGrid.sourceRowPositions,
+          analysisGrid.sourceColumnPositions
+        );
+
+        viewportLatArr = new Float64Array(
+          (outputRows + 1) * (outputCols + 1)
+        );
+        viewportLonArr = new Float64Array(
+          (outputRows + 1) * (outputCols + 1)
+        );
         for (let r = 0; r <= outputRows; r++) {
           const yM = grid.yMinM + r * grid.cellYM;
           const lat = mercatorYToLat(yM);
           for (let c = 0; c <= outputCols; c++) {
-            const xM = grid.xMinM + c * grid.cellXM;
-            const wrappedXM = wrapMercatorX(xM);
+            const wrappedXM = wrapMercatorX(grid.xMinM + c * grid.cellXM);
             const i = r * (outputCols + 1) + c;
             viewportLatArr[i] = lat;
             viewportLonArr[i] = mercatorXToLon(wrappedXM);
-            reqX[i] = wrappedXM;
-            reqY[i] = yM;
           }
         }
-        profiler.end(`Observer ${idx} - GEO Target Geodesy`);
-
-        profiler.start(`Observer ${idx} - Fetch GEO Target Terrain`);
-        const rawT = await terrainProvider.sampleGrid(reqX, reqY, zoom);
-        viewportTerrains = clampDemToVisibleSurface(rawT).surface;
-        profiler.end(`Observer ${idx} - Fetch GEO Target Terrain`);
-
-        viewportTerrains = clampDemToVisibleSurface(rawT).surface;
-        viewportDistances = surfaceDistanceM(
-          collectorLat,
-          collectorLon,
-          viewportLatArr,
-          viewportLonArr
-        );
-        viewportHorizonBefore = new Float64Array(numNodes).fill(-Infinity);
-      } else {
-        profiler.start(`Observer ${idx} - Analysis Grid Projection`);
-        const analysisGrid = observerInclusiveAnalysisGrid(
-          grid,
-          collectorLat,
-          collectorLon,
-          350000
-        );
-        const aNx = analysisGrid.nx,
-          aNy = analysisGrid.ny;
-        const aLon = new Float64Array(aNx * aNy),
-          aLat = new Float64Array(aNx * aNy);
-        const reqX = new Float64Array(aNx * aNy),
-          reqY = new Float64Array(aNx * aNy);
-
-        for (let r = 0; r < aNy; r++) {
-          const yM = analysisGrid.yMinM + (r + 0.5) * analysisGrid.cellYM;
-          const lat = mercatorYToLat(yM);
-          for (let c = 0; c < aNx; c++) {
-            const wrappedXM = wrapMercatorX(
-              analysisGrid.xMinM + (c + 0.5) * analysisGrid.cellXM
-            );
-            const i = r * aNx + c;
-            aLon[i] = mercatorXToLon(wrappedXM);
-            aLat[i] = lat;
-            reqX[i] = wrappedXM;
-            reqY[i] = yM;
-          }
-        }
-        profiler.end(`Observer ${idx} - Analysis Grid Projection`);
-
-        profiler.start(`Observer ${idx} - Fetch Analysis Terrain`);
-        const rawAnalysisTerrains = await terrainProvider.sampleGrid(
-          reqX,
-          reqY,
-          zoom
-        );
-        const { surface: aTerrains } =
-          clampDemToVisibleSurface(rawAnalysisTerrains);
-        const aObstructionTerrains = addObstructionHeightToDem(
-          aTerrains,
-          obstructionHeightAglM
-        );
-        profiler.end(`Observer ${idx} - Fetch Analysis Terrain`);
-        const aDist = surfaceDistanceM(collectorLat, collectorLon, aLat, aLon);
-        const aAngles = new Float64Array(aNx * aNy);
-        for (let i = 0; i < aAngles.length; i++) {
-          const [tX, tY, tZ] = geodeticToEcef(
-            aLat[i],
-            aLon[i],
-            aObstructionTerrains[i]
-          );
-          aAngles[i] = elevationAngles(
-            obsEcef,
-            collectorLat,
-            collectorLon,
-            tX,
-            tY,
-            tZ
-          );
-        }
-
-        const firstCX = analysisGrid.xMinM + 0.5 * analysisGrid.cellXM;
-        const firstCY = analysisGrid.yMinM + 0.5 * analysisGrid.cellYM;
-        let obsXShift =
-          obsX +
-          Math.round(
-            (0.5 * (analysisGrid.xMinM + analysisGrid.xMaxM) - obsX) /
-              WEB_MERCATOR_WORLD_WIDTH_M
-          ) *
-            WEB_MERCATOR_WORLD_WIDTH_M;
-        const oCol = Math.round((obsXShift - firstCX) / analysisGrid.cellXM);
-        const oRow = Math.round(
-          (latToMercatorY(collectorLat) - firstCY) / analysisGrid.cellYM
-        );
-
-        profiler.start(`Observer ${idx} - Chebyshev Horizon Sweep`);
-        const sweep = await gridHorizonSweep(
-          aAngles,
-          aDist,
-          aNy,
-          aNx,
-          oRow,
-          oCol,
-          runId
-        );
-        profiler.end(`Observer ${idx} - Chebyshev Horizon Sweep`);
-
-        if (analysisGrid.scale === 1) {
-          viewportHorizonBefore = sweep.horizonBeforeRad;
-          viewportDistances = aDist;
-          viewportTerrains = aTerrains;
-          viewportLatArr = aLat;
-          viewportLonArr = aLon;
-        } else {
-          profiler.start(`Observer ${idx} - Bilinear Expansion`);
-          viewportHorizonBefore = bilinearExpandRegularGrid(
-            sweep.horizonBeforeRad,
-            aNy,
-            aNx,
-            outputRows + 1,
-            outputCols + 1,
-            analysisGrid.sourceRowPositions,
-            analysisGrid.sourceColumnPositions
-          );
-          viewportDistances = bilinearExpandRegularGrid(
-            aDist,
-            aNy,
-            aNx,
-            outputRows + 1,
-            outputCols + 1,
-            analysisGrid.sourceRowPositions,
-            analysisGrid.sourceColumnPositions
-          );
-          viewportTerrains = bilinearExpandRegularGrid(
-            aTerrains,
-            aNy,
-            aNx,
-            outputRows + 1,
-            outputCols + 1,
-            analysisGrid.sourceRowPositions,
-            analysisGrid.sourceColumnPositions
-          );
-
-          viewportLatArr = new Float64Array(
-            (outputRows + 1) * (outputCols + 1)
-          );
-          viewportLonArr = new Float64Array(
-            (outputRows + 1) * (outputCols + 1)
-          );
-          for (let r = 0; r <= outputRows; r++) {
-            const yM = grid.yMinM + r * grid.cellYM;
-            const lat = mercatorYToLat(yM);
-            for (let c = 0; c <= outputCols; c++) {
-              const wrappedXM = wrapMercatorX(grid.xMinM + c * grid.cellXM);
-              const i = r * (outputCols + 1) + c;
-              viewportLatArr[i] = lat;
-              viewportLonArr[i] = mercatorXToLon(wrappedXM);
-            }
-          }
-          profiler.end(`Observer ${idx} - Bilinear Expansion`);
-        }
+        profiler.end(`Observer ${idx} - Bilinear Expansion`);
       }
 
       profiler.start(`Observer ${idx} - Dual Bisection MVA Solvers`);

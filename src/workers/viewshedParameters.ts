@@ -23,6 +23,24 @@ export function groundCollectorElevationM(
   return Math.max(0, bareEarthElevationM) + collectorClearanceM;
 }
 
+export function effectiveObserverElevationM(
+  kind: "ground" | "aircraft" | "geo" | "leo",
+  storedAltitudeM: number,
+  bareEarthElevationM: number,
+  collectorClearanceM: number,
+  highAltitudeThresholdM: number,
+): number {
+  if (kind === "ground") {
+    return groundCollectorElevationM(bareEarthElevationM, collectorClearanceM);
+  }
+  return Math.max(
+    storedAltitudeM || 0,
+    storedAltitudeM < highAltitudeThresholdM
+      ? Math.max(0, bareEarthElevationM)
+      : 0,
+  );
+}
+
 /** The target remains bare-earth based; clutter is only an intervening surface. */
 export function modeledProfileElevationM(
   bareEarthElevationM: number,

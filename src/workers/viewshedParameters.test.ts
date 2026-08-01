@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  effectiveObserverElevationM,
   groundCollectorElevationM,
   modeledProfileElevationM,
   validateViewshedHeightParameters,
 } from "./viewshedParameters";
+
+test("ground observer altitude is derived solely from DEM and clearance", () => {
+  assert.equal(effectiveObserverElevationM("ground", 1609, 1600, 0, 100_000), 1600);
+  assert.equal(effectiveObserverElevationM("ground", 1609, 1600, 25, 100_000), 1625);
+});
 
 function blocked(
   bare: number[],
