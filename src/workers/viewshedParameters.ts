@@ -85,3 +85,12 @@ export function effectiveMinimumVisibleAltitudeM(
     terrainMvaM,
   );
 }
+
+export function isProfileSampleBlocked(
+  modeledTerrainElevationM: number,
+  rayElevationM: number,
+  grazingToleranceM: number = 0.5,
+): boolean {
+  return !Number.isFinite(rayElevationM) ||
+    modeledTerrainElevationM > rayElevationM + grazingToleranceM;
+}

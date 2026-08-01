@@ -5,6 +5,7 @@ import {
   effectiveMinimumVisibleAltitudeM,
   effectiveObserverElevationM,
   groundCollectorElevationM,
+  isProfileSampleBlocked,
   modeledProfileElevationM,
   validateViewshedHeightParameters,
 } from "./viewshedParameters";
@@ -67,6 +68,12 @@ test("below-sea-level profiles retain the correct visibility classification", ()
   assert.equal(blocked([-100, -100, -100], 0, 0), false);
   assert.equal(blocked([-100, -80, -100], 0, 0), true);
   assert.equal(blocked([-100, -100, -100], 25, 0), false);
+});
+
+test("a negative ray is above ground when crossing a deeper basin", () => {
+  assert.equal(isProfileSampleBlocked(-200, -100), false);
+  assert.equal(isProfileSampleBlocked(-50, -100), true);
+  assert.equal(isProfileSampleBlocked(-200, Number.NEGATIVE_INFINITY), true);
 });
 
 test("the reference ellipsoid does not block targets on negative terrain", () => {

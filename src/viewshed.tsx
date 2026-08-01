@@ -18,6 +18,7 @@ import { Circle as CircleStyle, Fill, Stroke, Style } from "ol/style.js";
 import { TerrariumTerrainProvider } from "./workers/terrain";
 import {
   groundCollectorElevationM,
+  isProfileSampleBlocked,
   modeledProfileElevationM,
   validateViewshedHeightParameters,
 } from "./workers/viewshedParameters";
@@ -55,6 +56,7 @@ type ProfileResult = {
   minElev: number;
   maxElev: number;
   isBlocked: boolean;
+  error?: string;
 };
 
 export function toLatLon(
@@ -493,16 +495,13 @@ export function ViewshedApp() {
     }
 
     const elevations = await provider.sampleGrid(xs, ys, zoom);
-    const missingProfileSamples = Array.from(elevations).filter(
+    let missingProfileSamples = Array.from(elevations).filter(
       (elevation) => !Number.isFinite(elevation)
     ).length;
     if (missingProfileSamples === elevations.length) {
       throw new Error("Terrain could not be loaded for this profile");
     }
     if (missingProfileSamples > 0) {
-      setTerrainWarning(
-        `Terrain coverage is degraded: ${missingProfileSamples} profile samples were unavailable and modeled at sea level.`
-      );
       for (let i = 0; i < elevations.length; i++) {
         if (!Number.isFinite(elevations[i])) elevations[i] = 0;
       }
@@ -511,9 +510,18 @@ export function ViewshedApp() {
     let finalObsAlt = obs.altitude_m;
     if (obs.kind === "ground") {
       const rawObsTerrain = await provider.samplePoint(obsXM, obsYM, zoom);
+      const observerTerrain = Number.isFinite(rawObsTerrain)
+        ? rawObsTerrain
+        : 0;
+      if (!Number.isFinite(rawObsTerrain)) missingProfileSamples++;
       finalObsAlt = groundCollectorElevationM(
-        rawObsTerrain,
+        observerTerrain,
         obs.antennaHeightAglM
+      );
+    }
+    if (missingProfileSamples > 0) {
+      setTerrainWarning(
+        `Terrain coverage is degraded: ${missingProfileSamples} profile samples were unavailable and modeled at sea level.`
       );
     }
     const finalTgtAlt =
@@ -556,7 +564,7 @@ export function ViewshedApp() {
       // Dynamically ignore only the exact first and last sample indices to prevent
       // pixel self-shadowing, and add a 0.5m grazing tolerance.
       if (i > 0 && i < samples) {
-        if (rayAlt < 0 || elev > rayAlt + 0.5) {
+        if (isProfileSampleBlocked(elev, rayAlt)) {
           isBlocked = true;
         }
       }
@@ -790,7 +798,25 @@ export function ViewshedApp() {
                 return { ...prev, results: updatedResults };
               });
             })
-            .catch(() => {});
+            .catch((error: unknown) => {
+              const message = error instanceof Error
+                ? error.message
+                : String(error);
+              setTerrainWarning(`Terrain profile failed: ${message}`);
+              setProfileData((prev) => {
+                if (!prev) return prev;
+                const updatedResults = [...prev.results];
+                const tIdx = updatedResults.findIndex((r) => r.idx === idx);
+                if (tIdx !== -1) {
+                  updatedResults[tIdx] = {
+                    ...updatedResults[tIdx],
+                    loading: false,
+                    error: message,
+                  };
+                }
+                return { ...prev, results: updatedResults };
+              });
+            });
         });
         return;
       }
@@ -1055,12 +1081,12 @@ export function ViewshedApp() {
     if (!Number.isFinite(elevationM)) return;
 
     const updated = [...observersRef.current];
-    updated[idx] = { ...observer, altitude_m: Math.max(0, elevationM) };
+    updated[idx] = { ...observer, altitude_m: elevationM };
     setObservers(updated);
     observersRef.current = updated;
     clearObserverNumberDraft(idx, "altitude_m");
     setInspectorText(
-      `${observer.name} DEM elevation: ${Math.max(0, elevationM).toFixed(1)} m`
+      `${observer.name} DEM elevation: ${elevationM.toFixed(1)} m`
     );
     invalidateAndRecompute();
   };
@@ -1099,6 +1125,14 @@ export function ViewshedApp() {
           }}
         >
           Sampling Exact DEM Terrain...
+        </div>
+      );
+    }
+
+    if (activeRes.error) {
+      return (
+        <div role="alert" style={{ padding: "24px", color: "#991b1b", fontWeight: 600 }}>
+          Terrain profile unavailable: {activeRes.error}
         </div>
       );
     }
