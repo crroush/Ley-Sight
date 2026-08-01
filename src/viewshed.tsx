@@ -117,6 +117,7 @@ export function ViewshedApp() {
   const lastExtentStrRef = useRef<string>("");
   const isComputingRef = useRef<boolean>(false);
   const runIdRef = useRef<number>(0);
+  const profileRequestIdRef = useRef<number>(0);
 
   // Application State
   const [viewQuestion, setViewQuestion] = useState<string>("coverage-all");
@@ -455,7 +456,8 @@ export function ViewshedApp() {
     obs: Observer,
     tgtLat: number,
     tgtLon: number,
-    distM: number
+    distM: number,
+    requestId: number,
   ) => {
     const { obstructionHeightAglM } = validateViewshedHeightParameters({
       collectorClearanceM: obs.antennaHeightAglM,
@@ -520,9 +522,11 @@ export function ViewshedApp() {
       );
     }
     if (missingProfileSamples > 0) {
-      setTerrainWarning(
-        `Terrain coverage is degraded: ${missingProfileSamples} profile samples were unavailable and modeled at sea level.`
-      );
+      if (requestId === profileRequestIdRef.current) {
+        setTerrainWarning(
+          `Terrain coverage is degraded: ${missingProfileSamples} profile samples were unavailable and modeled at sea level.`
+        );
+      }
     }
     const finalTgtAlt =
       elevations[samples] + targetHeightRef.current * 1000;
@@ -700,6 +704,7 @@ export function ViewshedApp() {
       if (keysRef.current.i) {
         const activeIdxs = Array.from(activeCollectorsRef.current);
         if (activeIdxs.length === 0) return;
+        const profileRequestId = ++profileRequestIdRef.current;
 
         setInspectorText(
           `Inspecting Profile Target: ${lat.toFixed(6)}°, ${lon.toFixed(6)}°`
@@ -776,10 +781,11 @@ export function ViewshedApp() {
             lat,
             lon
           );
-          fetchDemProfile(obs, lat, lon, distM)
+          fetchDemProfile(obs, lat, lon, distM, profileRequestId)
             .then((data) => {
               setProfileData((prev) => {
-                if (!prev) return prev;
+                if (!prev || profileRequestId !== profileRequestIdRef.current)
+                  return prev;
                 const updatedResults = [...prev.results];
                 const tIdx = updatedResults.findIndex((r) => r.idx === idx);
                 if (tIdx !== -1) {
@@ -793,12 +799,14 @@ export function ViewshedApp() {
                     isBlocked: data.isBlocked,
                     obsAlt: data.finalObsAlt,
                     tgtAlt: data.finalTgtAlt,
+                    error: undefined,
                   };
                 }
                 return { ...prev, results: updatedResults };
               });
             })
             .catch((error: unknown) => {
+              if (profileRequestId !== profileRequestIdRef.current) return;
               const message = error instanceof Error
                 ? error.message
                 : String(error);
@@ -823,6 +831,7 @@ export function ViewshedApp() {
       // ... (Keep the map.on("click") block exactly as is)
 
       // 4. Default plain click (No Modifiers)
+      profileRequestIdRef.current++;
       vSource?.clear();
       validationLayerRef.current.changed();
       map.renderSync();
@@ -1968,7 +1977,7 @@ export function ViewshedApp() {
                   invalidateAndRecompute();
                 }}
                 style={{ width: "60px", padding: "2px 4px" }}
-                title="Uniform height added to land terrain to represent surface clutter (e.g., trees/buildings). Open water remains uncluttered."
+                title="Uniform height added to terrain to represent surface clutter (e.g., trees/buildings)."
               />{" "}
               m
             </div>
