@@ -127,6 +127,9 @@ export function ViewshedApp() {
   const [antennaHeightDrafts, setAntennaHeightDrafts] = useState<
     Record<number, string>
   >({});
+  const [observerFieldDrafts, setObserverFieldDrafts] = useState<
+    Record<string, string>
+  >({});
   const [obstructionHeightM, setObstructionHeightM] = useState<number>(0.0);
 
   const [losOpacity, setLosOpacity] = useState<number>(65);
@@ -617,6 +620,8 @@ export function ViewshedApp() {
           };
           setObservers(updated);
           observersRef.current = updated;
+          clearObserverNumberDraft(idx, "latitude_deg");
+          clearObserverNumberDraft(idx, "longitude_deg");
           setMapPickWaitingIdx(null);
           mapPickWaitingRef.current = null;
           map.getTargetElement().style.cursor = "";
@@ -646,6 +651,8 @@ export function ViewshedApp() {
           };
           setObservers(updated);
           observersRef.current = updated;
+          clearObserverNumberDraft(idx, "latitude_deg");
+          clearObserverNumberDraft(idx, "longitude_deg");
           setInspectorText(
             `Teleported ${updated[idx].name} to ${lat.toFixed(
               5
@@ -955,6 +962,64 @@ export function ViewshedApp() {
     });
   };
 
+  const observerDraftKey = (idx: number, field: keyof Observer) =>
+    `${idx}:${field}`;
+
+  const setObserverNumberDraft = (
+    idx: number,
+    field: keyof Observer,
+    value: string
+  ) => {
+    setObserverFieldDrafts((current) => ({
+      ...current,
+      [observerDraftKey(idx, field)]: value,
+    }));
+  };
+
+  const clearObserverNumberDraft = (idx: number, field: keyof Observer) => {
+    setObserverFieldDrafts((current) => {
+      const next = { ...current };
+      delete next[observerDraftKey(idx, field)];
+      return next;
+    });
+  };
+
+  const commitObserverNumber = (
+    idx: number,
+    field: "latitude_deg" | "longitude_deg" | "altitude_m",
+    minimum = -Infinity,
+    maximum = Infinity
+  ) => {
+    const draft = observerFieldDrafts[observerDraftKey(idx, field)];
+    if (draft === undefined) return;
+    const value = Number(draft);
+    if (
+      draft.trim() === "" ||
+      !Number.isFinite(value) ||
+      value < minimum ||
+      value > maximum
+    )
+      return;
+    handleObserverEdit(idx, field, value);
+    clearObserverNumberDraft(idx, field);
+  };
+
+  const pendingObserverInputStyle = (
+    idx: number,
+    field: keyof Observer
+  ) => {
+    const pending =
+      observerFieldDrafts[observerDraftKey(idx, field)] !== undefined;
+    return {
+      width: "100%",
+      boxSizing: "border-box" as const,
+      padding: "6px 8px",
+      border: `2px solid ${pending ? "#ef4444" : "#cbd5e1"}`,
+      background: pending ? "#fee2e2" : "#ffffff",
+      borderRadius: "5px",
+    };
+  };
+
   const lookupGroundElevation = async (idx: number) => {
     const observer = observersRef.current[idx];
     const provider = terrainProviderRef.current;
@@ -971,6 +1036,7 @@ export function ViewshedApp() {
     updated[idx] = { ...observer, altitude_m: Math.max(0, elevationM) };
     setObservers(updated);
     observersRef.current = updated;
+    clearObserverNumberDraft(idx, "altitude_m");
     setInspectorText(
       `${observer.name} DEM elevation: ${Math.max(0, elevationM).toFixed(1)} m`
     );
@@ -1612,16 +1678,26 @@ export function ViewshedApp() {
                       <input
                         type="number"
                         step="0.0001"
-                        value={obs.latitude_deg}
-                        onChange={(e) => {
-                          handleObserverEdit(
+                        value={
+                          observerFieldDrafts[
+                            observerDraftKey(idx, "latitude_deg")
+                          ] ?? String(obs.latitude_deg)
+                        }
+                        onChange={(e) =>
+                          setObserverNumberDraft(
                             idx,
                             "latitude_deg",
-                            parseFloat(e.target.value)
-                          );
-                          invalidateAndRecompute();
+                            e.target.value
+                          )
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter")
+                            commitObserverNumber(idx, "latitude_deg", -90, 90);
+                          if (e.key === "Escape")
+                            clearObserverNumberDraft(idx, "latitude_deg");
                         }}
-                        style={{ width: "100%", boxSizing: "border-box", padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: "5px" }}
+                        title="Latitude in decimal degrees. Press Enter to apply."
+                        style={pendingObserverInputStyle(idx, "latitude_deg")}
                         disabled={obs.kind === "geo"}
                       />
                     </td>
@@ -1629,16 +1705,26 @@ export function ViewshedApp() {
                       <input
                         type="number"
                         step="0.0001"
-                        value={obs.longitude_deg}
-                        onChange={(e) => {
-                          handleObserverEdit(
+                        value={
+                          observerFieldDrafts[
+                            observerDraftKey(idx, "longitude_deg")
+                          ] ?? String(obs.longitude_deg)
+                        }
+                        onChange={(e) =>
+                          setObserverNumberDraft(
                             idx,
                             "longitude_deg",
-                            parseFloat(e.target.value)
-                          );
-                          invalidateAndRecompute();
+                            e.target.value
+                          )
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter")
+                            commitObserverNumber(idx, "longitude_deg", -180, 180);
+                          if (e.key === "Escape")
+                            clearObserverNumberDraft(idx, "longitude_deg");
                         }}
-                        style={{ width: "100%", boxSizing: "border-box", padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: "5px" }}
+                        title="Longitude in decimal degrees. Press Enter to apply."
+                        style={pendingObserverInputStyle(idx, "longitude_deg")}
                       />
                     </td>
                     <td style={{ padding: "8px", borderBottom: "1px solid #e2e8f0" }}>
@@ -1670,12 +1756,12 @@ export function ViewshedApp() {
                               padding: "6px 8px",
                               border: `2px solid ${
                                 antennaHeightDrafts[idx] !== undefined
-                                  ? "#f59e0b"
+                                  ? "#ef4444"
                                   : "#cbd5e1"
                               }`,
                               background:
                                 antennaHeightDrafts[idx] !== undefined
-                                  ? "#fef08a"
+                                  ? "#fee2e2"
                                   : "#ffffff",
                               borderRadius: "5px",
                             }}
@@ -1688,10 +1774,35 @@ export function ViewshedApp() {
                           >
                             Lookup DEM
                           </button>
-                          <span title="Last sampled DEM elevation">
-                            {Number.isFinite(obs.altitude_m)
-                              ? `${obs.altitude_m.toFixed(0)} m DEM`
-                              : "DEM unknown"}
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={
+                              observerFieldDrafts[
+                                observerDraftKey(idx, "altitude_m")
+                              ] ?? String(obs.altitude_m)
+                            }
+                            onChange={(e) =>
+                              setObserverNumberDraft(
+                                idx,
+                                "altitude_m",
+                                e.target.value
+                              )
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter")
+                                commitObserverNumber(idx, "altitude_m");
+                              if (e.key === "Escape")
+                                clearObserverNumberDraft(idx, "altitude_m");
+                            }}
+                            title="DEM elevation in meters. Enter manually or use Lookup DEM, then press Enter to apply."
+                            style={{
+                              ...pendingObserverInputStyle(idx, "altitude_m"),
+                              width: "88px",
+                            }}
+                          />
+                          <span title="Digital Elevation Model elevation">
+                            m DEM
                           </span>
                         </div>
                       ) : (
@@ -1699,17 +1810,31 @@ export function ViewshedApp() {
                           <input
                             type="number"
                             step="1"
-                            value={obs.altitude_m}
+                            value={
+                              observerFieldDrafts[
+                                observerDraftKey(idx, "altitude_m")
+                              ] ?? String(obs.altitude_m)
+                            }
                             onChange={(e) =>
-                              handleObserverEdit(
+                              setObserverNumberDraft(
                                 idx,
                                 "altitude_m",
-                                Number(e.target.value)
+                                e.target.value
                               )
                             }
-                            style={{ width: "80px", padding: "2px 4px" }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter")
+                                commitObserverNumber(idx, "altitude_m");
+                              if (e.key === "Escape")
+                                clearObserverNumberDraft(idx, "altitude_m");
+                            }}
+                            title="Altitude above mean sea level. Press Enter to apply."
+                            style={{
+                              ...pendingObserverInputStyle(idx, "altitude_m"),
+                              width: "88px",
+                            }}
                           />
-                          <span>m MSL</span>
+                          <span title="Mean Sea Level">m MSL</span>
                         </div>
                       )}
                     </td>
