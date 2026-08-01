@@ -1,0 +1,34 @@
+{
+  "name": "leysight",
+  "private": true,
+  "version": "0.10.0-alpha.1",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node --import tsx --test src/lib/engineState.test.ts src/map/growable.test.ts src/map/quadtree.test.ts src/map/compactIndex.test.ts src/map/quadtreeParity.test.ts src/map/renderGeometry.test.ts src/map/selectionIndex.test.ts src/map/selectionInteractions.test.ts src/lib/colorPalettes.test.ts src/lib/csvColumnInference.test.ts src/lib/csvSchema.test.ts src/lib/gradientLine.test.ts src/lib/packagedGeoJson.test.ts src/lib/rasterMasks.test.ts src/lib/tableData.test.ts src/lib/tableSelection.test.ts src/lib/timeHistogram.test.ts src/storage/opfsWorkspace.test.ts src/workers/fieldColors.test.ts src/workers/tableColumns.test.ts src/demos/qtData.test.ts src/demos/qtUseCases.test.ts src/demos/routeEntries.test.ts src/map/million-points.test.ts",
+    "check": "npm test && npm run build"
+  },
+  "dependencies": {
+    "@tanstack/react-virtual": "^3.13.12",
+    "lucide-react": "^0.468.0",
+    "ol": "^10.10.0",
+    "papaparse": "^5.5.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.130",
+    "@types/papaparse": "^5.3.16",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.3"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "csvColumnDetection": {
+    "latitude": [
+      {"pattern": "^(latitude|lat|y)$", "flags": "i", "score": 1000},
+      {"pattern": "(^|[^a-z0-9])(latitude|lat)([^a-z0-9]|$)", "flags": "i", "score": 800}
+    ],
+    "longitude": [
+      {"pattern": "^(longitude|lon|lng|x)$", "flags": "i", "score": 1000},
+      {"pattern": "(^|[^a-z0-9])(longitude|lon|lng)([^a-z0-9]|$)", "flags": "i", "score": 800}
+    ],
+    "time": [
+      {"pattern": "^(timestamp|datetime|date|time)$", "flags": "i", "score": 1000},
+      {"pattern": "(^|[^a-z0-9])(timestamp|datetime|date|time)([^a-z0-9]|$)", "flags": "i", "score": 800}
+    ],
+    "semiMajor": [
+      {"pattern": "^(sma|semimajor|semi[ _-]?major)$", "flags": "i", "score": 1000}
+    ],
+    "semiMinor": [
+      {"pattern": "^(smi|semiminor|semi[ _-]?minor)$", "flags": "i", "score": 1000}
+    ],
+    "tilt": [
+      {"pattern": "^(tilt|bearing|angle|azimuth|heading)$", "flags": "i", "score": 1000}
+    ]
+  },
+  "baseLayers": [
+    {
+      "id": "osm",
+      "name": "OpenStreetMap",
+      "type": "osm",
+      "attribution": "© OpenStreetMap contributors"
+    },
+    {
+      "id": "osm-hot",
+      "name": "OpenStreetMap Humanitarian",
+      "type": "xyz",
+      "url": "https://{a-c}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
+      "attribution": "© OpenStreetMap contributors, Tiles style by HOT",
+      "maxZoom": 19
+    }
+  ],
+  "wmsPresets": []
+}
