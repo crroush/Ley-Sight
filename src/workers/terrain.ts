@@ -27,12 +27,26 @@ export class TerrariumTerrainProvider {
   // Existing properties...
   private tileCache = new Map<string, Uint8ClampedArray>();
 
+  constructor(
+    private readonly tileLoader?: (
+      z: number,
+      x: number,
+      y: number,
+    ) => Promise<Uint8ClampedArray | null>,
+  ) {}
+
   /**
    * Internal helper to load and decode a tile via OffscreenCanvas
    */
   private async loadTileData(z: number, x: number, y: number): Promise<Uint8ClampedArray | null> {
     const key = `${z}/${x}/${y}`;
     if (this.tileCache.has(key)) return this.tileCache.get(key)!;
+
+    if (this.tileLoader) {
+      const data = await this.tileLoader(z, x, y);
+      if (data) this.tileCache.set(key, data);
+      return data;
+    }
 
     try {
       const url = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
@@ -118,7 +132,11 @@ export class TerrariumTerrainProvider {
         const b = data[idx + 2];
         results[i] = (r * 256.0 + g + b / 256.0) - 32768.0;
       } else {
-        results[i] = 0.0; // Fallback for ocean / missing data
+        // A Terrarium pixel containing zero is a valid sea-level sample.  A
+        // tile which could not be read is different and must remain
+        // distinguishable by callers so that they can apply (and report) an
+        // explicit missing-data policy.
+        results[i] = Number.NaN;
       }
     }
 
@@ -131,4 +149,3 @@ export class TerrariumTerrainProvider {
     return arr[0];
   }
 }
-

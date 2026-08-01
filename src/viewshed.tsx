@@ -135,6 +135,7 @@ export function ViewshedApp() {
   const [losOpacity, setLosOpacity] = useState<number>(65);
   const [baseMapOpacity, setBaseMapOpacity] = useState<number>(100);
   const [isComputing, setIsComputing] = useState<boolean>(false);
+  const [terrainWarning, setTerrainWarning] = useState<string | null>(null);
   const [advancedExpanded, setAdvancedExpanded] = useState<boolean>(false);
   const [observersDropdownOpen, setObserversDropdownOpen] =
     useState<boolean>(false);
@@ -293,6 +294,12 @@ export function ViewshedApp() {
 
         if (event.data.type === "COMPUTE_COMPLETE") {
           const { buffer, nx, ny, bounds } = payload;
+          const terrain = payload.terrain;
+          setTerrainWarning(
+            terrain?.degraded
+              ? `Terrain coverage is degraded: ${terrain.missingSampleCount} of ${terrain.sampleCount} samples were unavailable and modeled at sea level.`
+              : null
+          );
 
           if (buffer && nx && ny && bounds) {
             const canvas = document.createElement("canvas");
@@ -332,6 +339,7 @@ export function ViewshedApp() {
           }
         } else if (event.data.type === "COMPUTE_FAILED") {
           console.error("Worker Computation Error:", payload.error);
+          setTerrainWarning(`Terrain analysis failed: ${payload.error}`);
         }
 
         // 3. Fallback: If we reached here (missing buffer, failed ctx, or COMPUTE_FAILED),
@@ -485,6 +493,20 @@ export function ViewshedApp() {
     }
 
     const elevations = await provider.sampleGrid(xs, ys, zoom);
+    const missingProfileSamples = Array.from(elevations).filter(
+      (elevation) => !Number.isFinite(elevation)
+    ).length;
+    if (missingProfileSamples === elevations.length) {
+      throw new Error("Terrain could not be loaded for this profile");
+    }
+    if (missingProfileSamples > 0) {
+      setTerrainWarning(
+        `Terrain coverage is degraded: ${missingProfileSamples} profile samples were unavailable and modeled at sea level.`
+      );
+      for (let i = 0; i < elevations.length; i++) {
+        if (!Number.isFinite(elevations[i])) elevations[i] = 0;
+      }
+    }
 
     let finalObsAlt = obs.altitude_m;
     if (obs.kind === "ground") {
@@ -495,7 +517,7 @@ export function ViewshedApp() {
       );
     }
     const finalTgtAlt =
-      Math.max(0, elevations[samples]) + targetHeightRef.current * 1000;
+      elevations[samples] + targetHeightRef.current * 1000;
 
     // 2. Exact Spherical Polar Math for Earth Curvature
     const R = 6371000;
@@ -560,7 +582,7 @@ export function ViewshedApp() {
       graphMaxElev = Math.max(graphMaxElev, finalObsAlt) + elevRange * 0.2;
 
       // Add a 5% bottom margin so the terrain doesn't touch the floor of the SVG
-      minElev = Math.max(0, minElev - elevRange * 0.05);
+      minElev -= elevRange * 0.05;
     } else {
       // Space/GEO links: Add 1500m of headroom so the ray plunges from the ceiling
       graphMaxElev += 1500;
@@ -1261,6 +1283,11 @@ export function ViewshedApp() {
           zIndex: 10,
         }}
       >
+        {terrainWarning && (
+          <div role="alert" style={{ color: "#991b1b", background: "#fee2e2", border: "1px solid #ef4444", padding: "6px 10px", borderRadius: "4px", fontWeight: 600 }}>
+            {terrainWarning}
+          </div>
+        )}
         {/* Main Controls Row */}
         <div
           style={{

@@ -20,7 +20,7 @@ export function groundCollectorElevationM(
   bareEarthElevationM: number,
   collectorClearanceM: number,
 ): number {
-  return Math.max(0, bareEarthElevationM) + collectorClearanceM;
+  return bareEarthElevationM + collectorClearanceM;
 }
 
 export function effectiveObserverElevationM(
@@ -36,7 +36,7 @@ export function effectiveObserverElevationM(
   return Math.max(
     storedAltitudeM || 0,
     storedAltitudeM < highAltitudeThresholdM
-      ? Math.max(0, bareEarthElevationM)
+      ? bareEarthElevationM
       : 0,
   );
 }
@@ -48,7 +48,7 @@ export function modeledProfileElevationM(
   lastSampleIndex: number,
   obstructionHeightAglM: number,
 ): number {
-  const bareEarth = Math.max(0, bareEarthElevationM);
+  const bareEarth = bareEarthElevationM;
   return sampleIndex > 0 && sampleIndex < lastSampleIndex
     ? bareEarth + obstructionHeightAglM
     : bareEarth;
@@ -60,6 +60,6 @@ export function addObstructionHeightToDem(
 ): Float64Array {
   return Float64Array.from(
     bareEarthElevationsM,
-    (elevationM) => Math.max(0, elevationM) + obstructionHeightAglM,
+    (elevationM) => elevationM + obstructionHeightAglM,
   );
 }
