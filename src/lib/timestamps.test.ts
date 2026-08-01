@@ -10,6 +10,12 @@ describe("parseTimestamp", () => {
     assert.equal(parseTimestamp("2024-02-29", "iso"), 1_709_164_800);
     assert.ok(Number.isNaN(parseTimestamp("2023-02-29", "iso")));
   });
+  it("preserves four-digit ISO years below 100", () => {
+    const yearZero = parseTimestamp("0000-01-01T00:00:00Z", "iso");
+    const yearNinetyNine = parseTimestamp("0099-12-31T23:59:59.25Z", "iso");
+    assert.equal(new Date(yearZero * 1000).toISOString(), "0000-01-01T00:00:00.000Z");
+    assert.equal(new Date(yearNinetyNine * 1000).toISOString(), "0099-12-31T23:59:59.250Z");
+  });
   it("converts seconds, milliseconds, microseconds, nanoseconds, and Excel dates", () => {
     const expected = 1_700_000_000;
     assert.equal(parseTimestamp("1700000000", "unix-seconds"), expected);

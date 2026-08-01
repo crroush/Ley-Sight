@@ -38,9 +38,13 @@ function isoSeconds(text: string): number {
   const year = Number(yearText), month = Number(monthText), day = Number(dayText);
   const hour = Number(hourText), minute = Number(minuteText), second = Number(secondText);
   if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) return Number.NaN;
-  const localMillis = Date.UTC(year, month - 1, day, hour, minute, second, Number(`0.${fraction}`) * 1000);
-  const check = new Date(Date.UTC(year, month - 1, day));
+  // Date.UTC treats years 0–99 as 1900–1999. setUTCFullYear preserves the
+  // literal ISO year, including year 0000, without relying on that legacy rule.
+  const check = new Date(0);
+  check.setUTCHours(hour, minute, second, 0);
+  check.setUTCFullYear(year, month - 1, day);
   if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) return Number.NaN;
+  const localSeconds = check.getTime() / 1000 + Number(`0.${fraction}`);
   let offsetMillis = 0;
   if (zone !== "Z") {
     const sign = zone[0] === "+" ? 1 : -1;
@@ -49,7 +53,7 @@ function isoSeconds(text: string): number {
     if (offsetHours > 23 || offsetMinutes > 59) return Number.NaN;
     offsetMillis = sign * (offsetHours * 60 + offsetMinutes) * 60_000;
   }
-  return (localMillis - offsetMillis) / 1000;
+  return localSeconds - offsetMillis / 1000;
 }
 
 export function parseTimestamp(value: unknown, interpretation: TimestampInterpretation = "automatic"): number {
