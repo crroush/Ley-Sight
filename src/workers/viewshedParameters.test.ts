@@ -71,6 +71,17 @@ test("interim visible-surface policy flattens Terrarium bathymetry", () => {
   assert.equal(visibleTerrainElevationM(0), 0);
   assert.equal(visibleTerrainElevationM(125), 125);
   assert.equal(visibleTerrainElevationM(Number.NaN), 0);
+  assert.equal(
+    effectiveObserverElevationM(
+      "ground",
+      -11_000,
+      visibleTerrainElevationM(-11_000),
+      2,
+      100_000,
+    ),
+    2,
+    "ground observers use the same sea-level surface as the analysis grid",
+  );
 });
 
 test("below-sea-level profiles retain the correct visibility classification", () => {

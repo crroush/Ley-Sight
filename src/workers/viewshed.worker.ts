@@ -750,7 +750,7 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
       terrainSampleCount++;
       if (!Number.isFinite(rawObsTerrain)) missingTerrainSampleCount++;
       const observerTerrainM = Number.isFinite(rawObsTerrain)
-        ? rawObsTerrain
+        ? visibleTerrainElevationM(rawObsTerrain)
         : MISSING_DEM_FALLBACK_M;
       const effectiveAltM = effectiveObserverElevationM(
         observer.kind,
