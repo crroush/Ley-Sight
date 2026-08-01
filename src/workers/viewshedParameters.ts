@@ -68,3 +68,20 @@ export function addObstructionHeightToDem(
       : elevationM + obstructionHeightAglM,
   );
 }
+
+/**
+ * The reference ellipsoid is not a physical obstruction where the DEM surface
+ * lies below it. The terrain horizon already models the real surface there;
+ * applying the ellipsoid solver as well would require a negative target to be
+ * raised to 0 m and falsely classify shallow ocean and below-sea-level land.
+ */
+export function effectiveMinimumVisibleAltitudeM(
+  bareEarthElevationM: number,
+  geometricMvaM: number,
+  terrainMvaM: number,
+): number {
+  return Math.max(
+    bareEarthElevationM < 0 ? 0 : geometricMvaM,
+    terrainMvaM,
+  );
+}

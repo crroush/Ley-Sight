@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   addObstructionHeightToDem,
+  effectiveMinimumVisibleAltitudeM,
   effectiveObserverElevationM,
   groundCollectorElevationM,
   modeledProfileElevationM,
@@ -66,6 +67,24 @@ test("below-sea-level profiles retain the correct visibility classification", ()
   assert.equal(blocked([-100, -100, -100], 0, 0), false);
   assert.equal(blocked([-100, -80, -100], 0, 0), true);
   assert.equal(blocked([-100, -100, -100], 25, 0), false);
+});
+
+test("the reference ellipsoid does not block targets on negative terrain", () => {
+  assert.equal(
+    effectiveMinimumVisibleAltitudeM(-1, 1.25, 0),
+    0,
+    "a shallow ocean target remains visible when its terrain horizon is clear",
+  );
+  assert.equal(
+    effectiveMinimumVisibleAltitudeM(-430, 430, 12),
+    12,
+    "below-sea-level land continues to use its real terrain horizon",
+  );
+  assert.equal(
+    effectiveMinimumVisibleAltitudeM(10, 4, 2),
+    4,
+    "terrain above the ellipsoid still uses geometric occultation",
+  );
 });
 
 test("height parameters must be finite non-negative meters", () => {

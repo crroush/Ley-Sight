@@ -13,6 +13,7 @@ import {
 import { TerrariumTerrainProvider, terrainZoomForSpacing } from "./terrain";
 import {
   addObstructionHeightToDem,
+  effectiveMinimumVisibleAltitudeM,
   effectiveObserverElevationM,
   validateViewshedHeightParameters,
 } from "./viewshedParameters";
@@ -987,7 +988,11 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
             DEFAULT_MAXIMUM_MVA_AGL_M
           );
 
-          const effectiveMva = Math.max(mvaGeo, mvaTer);
+          const effectiveMva = effectiveMinimumVisibleAltitudeM(
+            terrainM,
+            mvaGeo,
+            mvaTer
+          );
           obsMvaArray[pixelIdx] = effectiveMva;
           obsVisArray[pixelIdx] =
             targetHeightM + VISIBILITY_ALTITUDE_TOLERANCE_M >= effectiveMva
