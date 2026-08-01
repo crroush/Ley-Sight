@@ -16,6 +16,11 @@ import VectorSource from "ol/source/Vector.js";
 import { Circle as CircleStyle, Fill, Stroke, Style } from "ol/style.js";
 
 import { TerrariumTerrainProvider } from "./workers/terrain";
+import {
+  groundCollectorElevationM,
+  modeledProfileElevationM,
+  validateViewshedHeightParameters,
+} from "./workers/viewshedParameters";
 
 const WGS84_A_M = 6378137.0;
 function lonToMercatorX(lon: number) {
@@ -34,6 +39,7 @@ type Observer = {
   latitude_deg: number;
   longitude_deg: number;
   altitude_m: number;
+  antennaHeightAglM: number;
   color: string;
 };
 
@@ -114,8 +120,17 @@ export function ViewshedApp() {
   const [viewQuestion, setViewQuestion] = useState<string>("coverage-all");
   const [singleDetail, setSingleDetail] = useState<string>("blocked");
   const [targetHeightAgl, setTargetHeightAgl] = useState<number>(0.0);
+  const [targetHeightDraft, setTargetHeightDraft] = useState<string>("0");
+  const [targetHeightInputState, setTargetHeightInputState] = useState<
+    "clean" | "dirty" | "invalid"
+  >("clean");
+  const [antennaHeightDrafts, setAntennaHeightDrafts] = useState<
+    Record<number, string>
+  >({});
+  const [observerFieldDrafts, setObserverFieldDrafts] = useState<
+    Record<string, string>
+  >({});
   const [obstructionHeightM, setObstructionHeightM] = useState<number>(0.0);
-  const [collectorClearanceM, setCollectorClearanceM] = useState<number>(10.0);
 
   const [losOpacity, setLosOpacity] = useState<number>(65);
   const [baseMapOpacity, setBaseMapOpacity] = useState<number>(100);
@@ -132,9 +147,10 @@ export function ViewshedApp() {
     {
       name: "Ground Site",
       kind: "ground",
-      latitude_deg: 39.7392,
-      longitude_deg: -104.9903,
-      altitude_m: 1609.0,
+      latitude_deg: 39.730722,
+      longitude_deg: -105.232111,
+      altitude_m: 2222.4,
+      antennaHeightAglM: 223.0,
       color: "#e34a33",
     },
     {
@@ -142,7 +158,8 @@ export function ViewshedApp() {
       kind: "aircraft",
       latitude_deg: 39.25,
       longitude_deg: -105.7,
-      altitude_m: 10500.0,
+      altitude_m: 9144.0,
+      antennaHeightAglM: 0.0,
       color: "#16a34a",
     },
   ]);
@@ -189,8 +206,6 @@ export function ViewshedApp() {
   activeCollectorsRef.current = activeCollectors;
   const obstructionRef = useRef(obstructionHeightM);
   obstructionRef.current = obstructionHeightM;
-  const clearanceRef = useRef(collectorClearanceM);
-  clearanceRef.current = collectorClearanceM;
   const viewQuestionRef = useRef(viewQuestion);
   viewQuestionRef.current = viewQuestion;
   const singleDetailRef = useRef(singleDetail);
@@ -218,10 +233,6 @@ export function ViewshedApp() {
     obstruction: (v: number) => {
       setObstructionHeightM(v);
       obstructionRef.current = v;
-    },
-    clearance: (v: number) => {
-      setCollectorClearanceM(v);
-      clearanceRef.current = v;
     },
     activeIdx: (v: number) => {
       setActiveCollectorIdx(v);
@@ -372,7 +383,9 @@ export function ViewshedApp() {
         singleDetailRef.current
       }_obs:${activeIdxs.join("-")}_active:${computeIdx}_tgt:${
         targetHeightRef.current
-      }_obsM:${obstructionRef.current}_clr:${clearanceRef.current}`;
+      }_obsM:${obstructionRef.current}_clr:${observersRef.current
+        .map((observer) => observer.antennaHeightAglM)
+        .join("-")}`;
 
     if (extentKey === lastExtentStrRef.current && !force) return;
     lastExtentStrRef.current = extentKey;
@@ -409,7 +422,6 @@ export function ViewshedApp() {
         activeCollectorIdx: activeCollectorRef.current,
         targetHeightAgl: targetHeightRef.current,
         obstructionHeightAglM: obstructionRef.current,
-        collectorClearanceM: clearanceRef.current,
         viewQuestion: viewQuestionRef.current,
         singleDetail: singleDetailRef.current,
       },
@@ -435,6 +447,10 @@ export function ViewshedApp() {
     tgtLon: number,
     distM: number
   ) => {
+    const { obstructionHeightAglM } = validateViewshedHeightParameters({
+      collectorClearanceM: obs.antennaHeightAglM,
+      obstructionHeightAglM: obstructionRef.current,
+    });
     if (!terrainProviderRef.current) throw new Error("Provider not ready");
     const provider = terrainProviderRef.current;
 
@@ -473,7 +489,10 @@ export function ViewshedApp() {
     let finalObsAlt = obs.altitude_m;
     if (obs.kind === "ground") {
       const rawObsTerrain = await provider.samplePoint(obsXM, obsYM, zoom);
-      finalObsAlt = Math.max(0, rawObsTerrain) + clearanceRef.current;
+      finalObsAlt = groundCollectorElevationM(
+        rawObsTerrain,
+        obs.antennaHeightAglM
+      );
     }
     const finalTgtAlt =
       Math.max(0, elevations[samples]) + targetHeightRef.current * 1000;
@@ -495,7 +514,12 @@ export function ViewshedApp() {
     let isBlocked = false;
 
     for (let i = 0; i <= samples; i++) {
-      const elev = Math.max(0, elevations[i]);
+      const elev = modeledProfileElevationM(
+        elevations[i],
+        i,
+        samples,
+        obstructionHeightAglM
+      );
 
       const surfDistFromTgt = profileLengthM * (1.0 - i / samples);
       const theta = surfDistFromTgt / R;
@@ -596,6 +620,8 @@ export function ViewshedApp() {
           };
           setObservers(updated);
           observersRef.current = updated;
+          clearObserverNumberDraft(idx, "latitude_deg");
+          clearObserverNumberDraft(idx, "longitude_deg");
           setMapPickWaitingIdx(null);
           mapPickWaitingRef.current = null;
           map.getTargetElement().style.cursor = "";
@@ -625,6 +651,8 @@ export function ViewshedApp() {
           };
           setObservers(updated);
           observersRef.current = updated;
+          clearObserverNumberDraft(idx, "latitude_deg");
+          clearObserverNumberDraft(idx, "longitude_deg");
           setInspectorText(
             `Teleported ${updated[idx].name} to ${lat.toFixed(
               5
@@ -842,7 +870,8 @@ export function ViewshedApp() {
       kind: "ground",
       latitude_deg: spawnLat,
       longitude_deg: spawnLon,
-      altitude_m: 10,
+      altitude_m: 0,
+      antennaHeightAglM: 10,
       color: randomColor,
     };
 
@@ -918,6 +947,100 @@ export function ViewshedApp() {
     if (field !== "name" && field !== "color") {
       invalidateAndRecompute();
     }
+  };
+
+  const commitAntennaHeight = (idx: number) => {
+    const draft = antennaHeightDrafts[idx];
+    if (draft === undefined) return;
+    const heightM = Number(draft);
+    if (draft.trim() === "" || !Number.isFinite(heightM) || heightM < 0) return;
+    handleObserverEdit(idx, "antennaHeightAglM", heightM);
+    setAntennaHeightDrafts((current) => {
+      const next = { ...current };
+      delete next[idx];
+      return next;
+    });
+  };
+
+  const observerDraftKey = (idx: number, field: keyof Observer) =>
+    `${idx}:${field}`;
+
+  const setObserverNumberDraft = (
+    idx: number,
+    field: keyof Observer,
+    value: string
+  ) => {
+    setObserverFieldDrafts((current) => ({
+      ...current,
+      [observerDraftKey(idx, field)]: value,
+    }));
+  };
+
+  const clearObserverNumberDraft = (idx: number, field: keyof Observer) => {
+    setObserverFieldDrafts((current) => {
+      const next = { ...current };
+      delete next[observerDraftKey(idx, field)];
+      return next;
+    });
+  };
+
+  const commitObserverNumber = (
+    idx: number,
+    field: "latitude_deg" | "longitude_deg" | "altitude_m",
+    minimum = -Infinity,
+    maximum = Infinity
+  ) => {
+    const draft = observerFieldDrafts[observerDraftKey(idx, field)];
+    if (draft === undefined) return;
+    const value = Number(draft);
+    if (
+      draft.trim() === "" ||
+      !Number.isFinite(value) ||
+      value < minimum ||
+      value > maximum
+    )
+      return;
+    handleObserverEdit(idx, field, value);
+    clearObserverNumberDraft(idx, field);
+  };
+
+  const pendingObserverInputStyle = (
+    idx: number,
+    field: keyof Observer
+  ) => {
+    const pending =
+      observerFieldDrafts[observerDraftKey(idx, field)] !== undefined;
+    return {
+      width: "100%",
+      boxSizing: "border-box" as const,
+      padding: "6px 8px",
+      border: `2px solid ${pending ? "#ef4444" : "#cbd5e1"}`,
+      background: pending ? "#fee2e2" : "#ffffff",
+      borderRadius: "5px",
+    };
+  };
+
+  const lookupGroundElevation = async (idx: number) => {
+    const observer = observersRef.current[idx];
+    const provider = terrainProviderRef.current;
+    if (!observer || observer.kind !== "ground" || !provider) return;
+
+    const elevationM = await provider.samplePoint(
+      lonToMercatorX(observer.longitude_deg),
+      latToMercatorY(observer.latitude_deg),
+      14
+    );
+    if (!Number.isFinite(elevationM)) return;
+
+    const updated = [...observersRef.current];
+    updated[idx] = { ...observer, altitude_m: Math.max(0, elevationM) };
+    setObservers(updated);
+    observersRef.current = updated;
+    clearObserverNumberDraft(idx, "altitude_m");
+    setInspectorText(
+      `${observer.name} DEM elevation: ${Math.max(0, elevationM).toFixed(1)} m`
+    );
+    invalidateAndRecompute();
   };
 
   const triggerMapPick = (idx: number) => {
@@ -1313,19 +1436,60 @@ export function ViewshedApp() {
               type="number"
               step="0.1"
               min="0"
-              value={targetHeightAgl}
+              value={targetHeightDraft}
               onChange={(e) => {
-                syncSet.targetHeight(parseFloat(e.target.value) || 0);
+                setTargetHeightDraft(e.target.value);
+                setTargetHeightInputState("dirty");
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setTargetHeightDraft(String(targetHeightRef.current));
+                  setTargetHeightInputState("clean");
+                  return;
+                }
+                if (e.key !== "Enter") return;
+
+                const nextHeight = Number(targetHeightDraft);
+                if (
+                  targetHeightDraft.trim() === "" ||
+                  !Number.isFinite(nextHeight) ||
+                  nextHeight < 0
+                ) {
+                  setTargetHeightInputState("invalid");
+                  return;
+                }
+
+                syncSet.targetHeight(nextHeight);
+                setTargetHeightDraft(String(nextHeight));
+                setTargetHeightInputState("clean");
                 invalidateAndRecompute();
               }}
+              title="Target height above the sampled DEM. Press Enter to update the viewshed."
               style={{
                 width: "80px",
                 padding: "3px",
-                border: "1px solid #94a3b8",
+                border: `1px solid ${
+                  targetHeightInputState === "invalid"
+                    ? "#dc2626"
+                    : targetHeightInputState === "dirty"
+                    ? "#d97706"
+                    : "#94a3b8"
+                }`,
+                background:
+                  targetHeightInputState === "invalid"
+                    ? "#fef2f2"
+                    : targetHeightInputState === "dirty"
+                    ? "#fffbeb"
+                    : "#ffffff",
                 borderRadius: "4px",
               }}
             />
-            <span style={{ marginLeft: "4px" }}>km AGL</span>
+            <span
+              style={{ marginLeft: "4px" }}
+              title="Target height above the sampled DEM."
+            >
+              km
+            </span>
           </div>
 
           <button
@@ -1395,41 +1559,41 @@ export function ViewshedApp() {
         {showEditor && (
           <div
             style={{
-              background: "#f8fafc",
-              border: "1px solid #94a3b8",
-              padding: "8px",
-              maxHeight: "250px",
+              background: "#ffffff",
+              border: "1px solid #cbd5e1",
+              padding: "16px",
+              maxHeight: "360px",
               overflowY: "auto",
-              borderRadius: "4px",
+              borderRadius: "10px",
+              boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)",
             }}
           >
             <div
               style={{
-                fontWeight: "bold",
-                marginBottom: "8px",
-                borderBottom: "1px solid #cbd5e1",
-                paddingBottom: "4px",
-              }}
-            >
-              Edit Observer Geometry
-            </div>
-            <div
-              style={{
-                marginTop: "12px",
                 display: "flex",
-                justifyContent: "flex-start",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "12px",
               }}
             >
+              <div>
+                <div style={{ fontWeight: 700, fontSize: "15px" }}>
+                  Collector geometry
+                </div>
+                <div style={{ color: "#64748b", marginTop: "2px" }}>
+                  Configure positions and sensor heights for each collector.
+                </div>
+              </div>
               <button
                 onClick={handleAddCollector}
                 style={{
-                  padding: "6px 12px",
-                  backgroundColor: "#f1f5f9",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "4px",
+                  padding: "7px 12px",
+                  backgroundColor: "#2563eb",
+                  border: "1px solid #1d4ed8",
+                  borderRadius: "6px",
                   cursor: "pointer",
-                  fontWeight: "bold",
-                  color: "#334155",
+                  fontWeight: 700,
+                  color: "#ffffff",
                 }}
               >
                 + Add Collector
@@ -1439,26 +1603,28 @@ export function ViewshedApp() {
               style={{
                 width: "100%",
                 textAlign: "left",
-                borderCollapse: "collapse",
+                borderCollapse: "separate",
+                borderSpacing: 0,
+                tableLayout: "fixed",
               }}
             >
               <thead>
-                <tr style={{ borderBottom: "1px solid #cbd5e1" }}>
-                  <th style={{ padding: "4px" }}>Color</th>
-                  <th style={{ padding: "4px" }}>Name</th>
-                  <th style={{ padding: "4px" }}>Kind</th>
-                  <th style={{ padding: "4px" }}>Latitude</th>
-                  <th style={{ padding: "4px" }}>Longitude</th>
-                  <th style={{ padding: "4px" }}>Altitude (m)</th>
-                  <th style={{ padding: "4px" }}>Action</th>
-                  <th style={{ padding: "4px" }}></th>{" "}
+                <tr style={{ background: "#f1f5f9", color: "#475569" }}>
+                  <th style={{ padding: "8px", width: "48px" }}>Color</th>
+                  <th style={{ padding: "8px", width: "140px" }}>Name</th>
+                  <th style={{ padding: "8px", width: "90px" }}>Type</th>
+                  <th style={{ padding: "8px", width: "120px" }}>Latitude</th>
+                  <th style={{ padding: "8px", width: "120px" }}>Longitude</th>
+                  <th style={{ padding: "8px", width: "280px" }}>Sensor height</th>
+                  <th style={{ padding: "8px", width: "110px" }}>Position</th>
+                  <th style={{ padding: "8px", width: "44px" }}></th>{" "}
                   {/* Empty header for trashcan */}
                 </tr>
               </thead>
               <tbody>
                 {observers.map((obs, idx) => (
-                  <tr key={idx} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                    <td style={{ padding: "4px" }}>
+                  <tr key={idx} style={{ background: idx % 2 ? "#f8fafc" : "#ffffff" }}>
+                    <td style={{ padding: "8px", borderBottom: "1px solid #e2e8f0" }}>
                       <input
                         type="color"
                         value={obs.color}
@@ -1474,24 +1640,33 @@ export function ViewshedApp() {
                         }}
                       />
                     </td>
-                    <td style={{ padding: "4px" }}>
+                    <td style={{ padding: "8px", borderBottom: "1px solid #e2e8f0" }}>
                       <input
                         type="text"
                         value={obs.name}
                         onChange={(e) =>
                           handleObserverEdit(idx, "name", e.target.value)
                         }
-                        style={{ width: "120px", padding: "2px 4px" }}
+                        style={{ width: "100%", boxSizing: "border-box", padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: "5px" }}
                       />
                     </td>
-                    <td style={{ padding: "4px" }}>
+                    <td style={{ padding: "8px", borderBottom: "1px solid #e2e8f0" }}>
                       <select
                         value={obs.kind}
                         onChange={(e) => {
-                          handleObserverEdit(idx, "kind", e.target.value);
+                          const kind = e.target.value as Observer["kind"];
+                          const updated = [...observersRef.current];
+                          updated[idx] = {
+                            ...updated[idx],
+                            kind,
+                            altitude_m:
+                              kind === "aircraft" ? 9144 : updated[idx].altitude_m,
+                          };
+                          setObservers(updated);
+                          observersRef.current = updated;
                           invalidateAndRecompute();
                         }}
-                        style={{ padding: "2px 4px" }}
+                        style={{ width: "100%", padding: "6px", border: "1px solid #cbd5e1", borderRadius: "5px" }}
                       >
                         <option value="ground">Ground</option>
                         <option value="aircraft">Aircraft</option>
@@ -1499,56 +1674,171 @@ export function ViewshedApp() {
                         <option value="geo">GEO</option>
                       </select>
                     </td>
-                    <td style={{ padding: "4px" }}>
+                    <td style={{ padding: "8px", borderBottom: "1px solid #e2e8f0" }}>
                       <input
                         type="number"
                         step="0.0001"
-                        value={obs.latitude_deg}
-                        onChange={(e) => {
-                          handleObserverEdit(
+                        value={
+                          observerFieldDrafts[
+                            observerDraftKey(idx, "latitude_deg")
+                          ] ?? String(obs.latitude_deg)
+                        }
+                        onChange={(e) =>
+                          setObserverNumberDraft(
                             idx,
                             "latitude_deg",
-                            parseFloat(e.target.value)
-                          );
-                          invalidateAndRecompute();
+                            e.target.value
+                          )
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter")
+                            commitObserverNumber(idx, "latitude_deg", -90, 90);
+                          if (e.key === "Escape")
+                            clearObserverNumberDraft(idx, "latitude_deg");
                         }}
-                        style={{ width: "80px", padding: "2px 4px" }}
+                        title="Latitude in decimal degrees. Press Enter to apply."
+                        style={pendingObserverInputStyle(idx, "latitude_deg")}
                         disabled={obs.kind === "geo"}
                       />
                     </td>
-                    <td style={{ padding: "4px" }}>
+                    <td style={{ padding: "8px", borderBottom: "1px solid #e2e8f0" }}>
                       <input
                         type="number"
                         step="0.0001"
-                        value={obs.longitude_deg}
-                        onChange={(e) => {
-                          handleObserverEdit(
+                        value={
+                          observerFieldDrafts[
+                            observerDraftKey(idx, "longitude_deg")
+                          ] ?? String(obs.longitude_deg)
+                        }
+                        onChange={(e) =>
+                          setObserverNumberDraft(
                             idx,
                             "longitude_deg",
-                            parseFloat(e.target.value)
-                          );
-                          invalidateAndRecompute();
+                            e.target.value
+                          )
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter")
+                            commitObserverNumber(idx, "longitude_deg", -180, 180);
+                          if (e.key === "Escape")
+                            clearObserverNumberDraft(idx, "longitude_deg");
                         }}
-                        style={{ width: "80px", padding: "2px 4px" }}
+                        title="Longitude in decimal degrees. Press Enter to apply."
+                        style={pendingObserverInputStyle(idx, "longitude_deg")}
                       />
                     </td>
-                    <td style={{ padding: "4px" }}>
-                      <input
-                        type="number"
-                        step="1"
-                        value={obs.altitude_m}
-                        onChange={(e) => {
-                          handleObserverEdit(
-                            idx,
-                            "altitude_m",
-                            parseFloat(e.target.value)
-                          );
-                          invalidateAndRecompute();
-                        }}
-                        style={{ width: "80px", padding: "2px 4px" }}
-                      />
+                    <td style={{ padding: "8px", borderBottom: "1px solid #e2e8f0" }}>
+                      {obs.kind === "ground" ? (
+                        <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={antennaHeightDrafts[idx] ?? String(obs.antennaHeightAglM)}
+                            title="Antenna height above the DEM at this collector"
+                            onChange={(e) =>
+                              setAntennaHeightDrafts((current) => ({
+                                ...current,
+                                [idx]: e.target.value,
+                              }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") commitAntennaHeight(idx);
+                              if (e.key === "Escape")
+                                setAntennaHeightDrafts((current) => {
+                                  const next = { ...current };
+                                  delete next[idx];
+                                  return next;
+                                });
+                            }}
+                            style={{
+                              width: "72px",
+                              padding: "6px 8px",
+                              border: `2px solid ${
+                                antennaHeightDrafts[idx] !== undefined
+                                  ? "#ef4444"
+                                  : "#cbd5e1"
+                              }`,
+                              background:
+                                antennaHeightDrafts[idx] !== undefined
+                                  ? "#fee2e2"
+                                  : "#ffffff",
+                              borderRadius: "5px",
+                            }}
+                          />
+                          <span>m AGL</span>
+                          <button
+                            onClick={() => lookupGroundElevation(idx)}
+                            title="Sample the DEM at this latitude and longitude"
+                            style={{ padding: "6px 8px", cursor: "pointer", border: "1px solid #94a3b8", borderRadius: "5px", background: "#f8fafc" }}
+                          >
+                            Lookup DEM
+                          </button>
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={
+                              observerFieldDrafts[
+                                observerDraftKey(idx, "altitude_m")
+                              ] ?? String(obs.altitude_m)
+                            }
+                            onChange={(e) =>
+                              setObserverNumberDraft(
+                                idx,
+                                "altitude_m",
+                                e.target.value
+                              )
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter")
+                                commitObserverNumber(idx, "altitude_m");
+                              if (e.key === "Escape")
+                                clearObserverNumberDraft(idx, "altitude_m");
+                            }}
+                            title="DEM elevation in meters. Enter manually or use Lookup DEM, then press Enter to apply."
+                            style={{
+                              ...pendingObserverInputStyle(idx, "altitude_m"),
+                              width: "88px",
+                            }}
+                          />
+                          <span title="Digital Elevation Model elevation">
+                            m DEM
+                          </span>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                          <input
+                            type="number"
+                            step="1"
+                            value={
+                              observerFieldDrafts[
+                                observerDraftKey(idx, "altitude_m")
+                              ] ?? String(obs.altitude_m)
+                            }
+                            onChange={(e) =>
+                              setObserverNumberDraft(
+                                idx,
+                                "altitude_m",
+                                e.target.value
+                              )
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter")
+                                commitObserverNumber(idx, "altitude_m");
+                              if (e.key === "Escape")
+                                clearObserverNumberDraft(idx, "altitude_m");
+                            }}
+                            title="Altitude above mean sea level. Press Enter to apply."
+                            style={{
+                              ...pendingObserverInputStyle(idx, "altitude_m"),
+                              width: "88px",
+                            }}
+                          />
+                          <span title="Mean Sea Level">m MSL</span>
+                        </div>
+                      )}
                     </td>
-                    <td style={{ padding: "4px" }}>
+                    <td style={{ padding: "8px", borderBottom: "1px solid #e2e8f0" }}>
                       {obs.kind !== "geo" && (
                         <button
                           onClick={() => triggerMapPick(idx)}
@@ -1570,7 +1860,7 @@ export function ViewshedApp() {
                       )}
                     </td>
                     {/* Trashcan Delete Column */}
-                    <td style={{ padding: "4px", textAlign: "center" }}>
+                    <td style={{ padding: "8px", textAlign: "center", borderBottom: "1px solid #e2e8f0" }}>
                       <button
                         onClick={() => handleDeleteCollector(idx)}
                         title="Delete Observer"
@@ -1607,9 +1897,10 @@ export function ViewshedApp() {
             }}
           >
             <div>
-              <label>Blocker Height: </label>
+              <label>Modeled Clutter Height: </label>
               <input
                 type="number"
+                min="0"
                 value={obstructionHeightM}
                 onChange={(e) => {
                   syncSet.obstruction(parseFloat(e.target.value) || 0);
@@ -1619,20 +1910,6 @@ export function ViewshedApp() {
                 title="Uniform height added to all terrain to represent surface clutter (e.g., trees/buildings)."
               />{" "}
               m
-            </div>
-            <div>
-              <label>Ground Clearance: </label>
-              <input
-                type="number"
-                value={collectorClearanceM}
-                onChange={(e) => {
-                  syncSet.clearance(parseFloat(e.target.value) || 0);
-                  invalidateAndRecompute();
-                }}
-                style={{ width: "60px", padding: "2px 4px" }}
-                title="Height of the observer antenna above its local bare-earth surface."
-              />{" "}
-              m AGL
             </div>
             <div>
               <label>Viewshed Opacity ({losOpacity}%): </label>
