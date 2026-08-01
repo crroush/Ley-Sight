@@ -8,6 +8,8 @@ export type DatasetSummary = {
   timeMax: number;
   invalidRows: number;
   invalidTimestamps: number;
+  coordinateFailures: number;
+  projectionClampedRows: number;
 };
 
 export type NumericTableColumn = {
@@ -85,6 +87,8 @@ export type AppendableDataset = Pick<
 > & {
   invalidRows: number;
   invalidTimestamps: number;
+  coordinateFailures: number;
+  projectionClampedRows: number;
   timeMin: number;
   timeMax: number;
 };

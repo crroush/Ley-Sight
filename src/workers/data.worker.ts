@@ -12,7 +12,7 @@ import type {
 } from "../lib/types";
 import { GrowableTypedArray } from "../map/growable";
 import { buildCompactSpatialIndex } from "../map/compactIndex";
-import { projectLatitude, projectLongitude } from "../map/projection";
+import { projectLatitude, projectLongitude, validateCoordinate } from "../map/projection";
 import { FieldColorBuilder } from "./fieldColors";
 import {
   gradientColor,
@@ -224,6 +224,8 @@ async function generateSynthetic(
     timeMax: startedAt + duration,
     invalidRows: 0,
     invalidTimestamps: 0,
+    coordinateFailures: 0,
+    projectionClampedRows: 0,
   };
   const dataset = buildDataset(
     requestId,
@@ -287,6 +289,8 @@ async function parseFiles(
   let rowCount = base?.x.length ?? 0;
   let invalidRows = base?.invalidRows ?? 0;
   let invalidTimestamps = base?.invalidTimestamps ?? 0;
+  let coordinateFailures = base?.coordinateFailures ?? 0;
+  let projectionClampedRows = base?.projectionClampedRows ?? 0;
   let timeMin =
     hasBase && Number.isFinite(base!.timeMin) ? base!.timeMin : Infinity;
   let timeMax =
@@ -332,17 +336,13 @@ async function parseFiles(
           for (const row of results.data) {
             const longitude = numeric(row[columns.longitude]);
             const latitude = numeric(row[columns.latitude]);
-            if (
-              !Number.isFinite(longitude) ||
-              !Number.isFinite(latitude) ||
-              latitude < -90 ||
-              latitude > 90
-            ) {
-              invalidRows += 1;
+            const coordinate = validateCoordinate(longitude, latitude);
+            if (coordinate.status === "invalid") {
+              coordinateFailures += 1;
               continue;
             }
-            const x = projectedX(longitude);
-            const y = projectedY(latitude);
+            if (coordinate.projectionClamped) projectionClampedRows += 1;
+            const [x, y] = coordinate.projected;
             const timeValue = columns.time
               ? parseTimestamp(row[columns.time], columns.timestampInterpretation)
               : Number.NaN;
@@ -405,6 +405,8 @@ async function parseFiles(
     timeMax: Number.isFinite(timeMax) ? timeMax : Number.NaN,
     invalidRows,
     invalidTimestamps,
+    coordinateFailures,
+    projectionClampedRows,
   };
   const appendedColors = fieldColors
     ? fieldColors.finish()
@@ -490,14 +492,7 @@ async function recolorFiles(
           for (const row of results.data) {
             const longitude = numeric(row[columns.longitude]);
             const latitude = numeric(row[columns.latitude]);
-            if (
-              !Number.isFinite(longitude) ||
-              !Number.isFinite(latitude) ||
-              latitude < -90 ||
-              latitude > 90
-            ) {
-              continue;
-            }
+            if (validateCoordinate(longitude, latitude).status === "invalid") continue;
             fieldColors.push(row[colorField]);
           }
           emit({

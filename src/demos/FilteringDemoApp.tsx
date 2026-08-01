@@ -110,6 +110,8 @@ function buildDataset(rows: readonly FilterRow[]): {
       timeMax: END_TIME,
       invalidRows: 0,
       invalidTimestamps: 0,
+      coordinateFailures: 0,
+      projectionClampedRows: 0,
     },
   };
 }
