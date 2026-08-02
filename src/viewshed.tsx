@@ -309,10 +309,26 @@ export function ViewshedApp() {
         if (!event.data || typeof event.data !== "object") throw new Error("The worker returned an empty or malformed response.");
 
         const payload = event.data.payload || event.data;
-        const { runId } = payload;
+        const payloadRunId = payload.runId;
+
+        // A response without an attributable run is malformed. Report it
+        // against the current run rather than accidentally leaving that run
+        // in the running state forever.
+        if (!Number.isInteger(payloadRunId)) {
+          updateResult({
+            type: "ERROR",
+            runId: runIdRef.current,
+            timestamp: Date.now(),
+            message: "The worker response did not include a valid run identifier.",
+          });
+          isComputingRef.current = false;
+          setIsComputing(false);
+          return;
+        }
+        const runId = payloadRunId as number;
 
         // 1. Immediately ignore any messages from obsolete, cancelled runs
-        if (runId !== undefined && runId !== runIdRef.current) return;
+        if (runId !== runIdRef.current) return;
 
         if (event.data.type === "COMPUTE_COMPLETE") {
           const { buffer, nx, ny, bounds } = payload;

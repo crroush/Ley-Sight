@@ -25,6 +25,23 @@ test("missing and malformed image buffers are rejected", () => {
   assert.match(viewshedPayloadError({ buffer: new ArrayBuffer(0), nx: 1, ny: 1, bounds: [0, 0, 1, 1] })!, /size/);
 });
 
+test("a malformed response can be attributed to the active run", () => {
+  const running = reduceViewshedResult(initialViewshedResultState, {
+    type: "START",
+    runId: 7,
+  });
+  const missingRunIdError = reduceViewshedResult(running, {
+    type: "ERROR",
+    runId: running.activeRunId!,
+    timestamp: 101,
+    message: "The worker response did not include a valid run identifier.",
+  });
+
+  assert.equal(missingRunIdError.status, "error");
+  assert.equal(missingRunIdError.activeRunId, 7);
+  assert.match(missingRunIdError.errorMessage!, /run identifier/);
+});
+
 test("null blobs are not accepted as object URL replacements", () => {
   const urls = new VisibilityObjectUrl();
   assert.throws(() => urls.replace(null as unknown as Blob));
