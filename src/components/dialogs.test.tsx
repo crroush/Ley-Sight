@@ -7,12 +7,12 @@ import {ModalDialog} from "./ModalDialog";
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "http://localhost/",
 });
-Object.assign(globalThis, {
-  window: dom.window,
-  document: dom.window.document,
-  navigator: dom.window.navigator,
-  HTMLElement: dom.window.HTMLElement,
-  Node: dom.window.Node,
+Object.defineProperties(globalThis, {
+  window: {value: dom.window, configurable: true},
+  document: {value: dom.window.document, configurable: true},
+  navigator: {value: dom.window.navigator, configurable: true},
+  HTMLElement: {value: dom.window.HTMLElement, configurable: true},
+  Node: {value: dom.window.Node, configurable: true},
 });
 const {cleanup, fireEvent, render, screen} = await import("@testing-library/react");
 
@@ -50,6 +50,22 @@ test("modal focuses, wraps focus, dismisses on Escape, and restores the opener",
 
   view.unmount();
   assert.equal(document.activeElement, opener);
+});
+
+test("Shift+Tab wraps from an initially focused non-tabbable heading", () => {
+  render(
+    <ModalDialog titleId="heading" initialFocus="#heading">
+      <h2 id="heading" tabIndex={-1}>Settings</h2>
+      <button>First action</button>
+      <button>Last action</button>
+    </ModalDialog>,
+  );
+
+  const heading = screen.getByRole("heading", {name: "Settings"});
+  const last = screen.getByRole("button", {name: "Last action"});
+  assert.equal(document.activeElement, heading);
+  fireEvent.keyDown(heading, {key: "Tab", shiftKey: true});
+  assert.equal(document.activeElement, last);
 });
 
 test("CSV mapping exposes labels and rejects duplicate coordinate columns", () => {
