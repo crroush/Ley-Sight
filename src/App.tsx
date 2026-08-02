@@ -52,6 +52,7 @@ import type {
 } from "./lib/types";
 import { csvSchemaKey } from "./lib/csvSchema";
 import { extendEngineState } from "./lib/engineState";
+import {buildFineTimeHistogram} from "./lib/timeHistogram";
 import {
   COLOR_PALETTES,
   paletteCss,
@@ -62,6 +63,7 @@ import {
   type ColorValueMode,
 } from "./lib/colorValueModes";
 import type { FastPointEngine } from "./map/FastPointEngine";
+import {buildCompactSpatialIndex} from "./map/compactIndex";
 import {tableColumnValue} from "./workers/tableColumns";
 import {
   clearPersistedWorkspace,
@@ -159,6 +161,72 @@ type PendingOperation = LoadPending | RecolorPending;
 
 function csvImportLog(event: string, details: Record<string, unknown>): void {
   console.info(`[LeySight CSV] ${event}`, details);
+}
+
+function concatenate<T extends Float64Array | Float32Array | Uint32Array>(
+  arrays: T[],
+  Constructor: {new (length: number): T},
+): T {
+  const result = new Constructor(arrays.reduce((sum, array) => sum + array.length, 0));
+  let offset = 0;
+  for (const array of arrays) {
+    result.set(array, offset);
+    offset += array.length;
+  }
+  return result;
+}
+
+function combinedMapDataset(tabs: DatasetTab[], activeId: number): {
+  dataset: PackedDataset;
+  summary: DatasetSummary;
+  activeRows: number;
+} | null {
+  const active = tabs.find((tab) => tab.id === activeId && tab.dataset && tab.summary);
+  if (!active?.dataset || !active.summary) return null;
+  const sources = [active, ...tabs.filter(
+    (tab) => tab.id !== activeId && tab.dataset && tab.summary,
+  )];
+  const datasets = sources.map((tab) => tab.dataset!);
+  const summaries = sources.map((tab) => tab.summary!);
+  const x = concatenate(datasets.map((dataset) => dataset.x), Float64Array);
+  const y = concatenate(datasets.map((dataset) => dataset.y), Float64Array);
+  const times = concatenate(datasets.map((dataset) => dataset.time), Float64Array);
+  const finiteMinimums = summaries.map((summary) => summary.timeMin).filter(Number.isFinite);
+  const finiteMaximums = summaries.map((summary) => summary.timeMax).filter(Number.isFinite);
+  const timeMin = finiteMinimums.length ? Math.min(...finiteMinimums) : Number.NaN;
+  const timeMax = finiteMaximums.length ? Math.max(...finiteMaximums) : Number.NaN;
+  const extent: [number, number, number, number] = [
+    Math.min(...datasets.map((dataset) => dataset.extent[0])),
+    Math.min(...datasets.map((dataset) => dataset.extent[1])),
+    Math.max(...datasets.map((dataset) => dataset.extent[2])),
+    Math.max(...datasets.map((dataset) => dataset.extent[3])),
+  ];
+  const dataset: PackedDataset = {
+    x,
+    y,
+    semiMajor: concatenate(datasets.map((item) => item.semiMajor), Float32Array),
+    semiMinor: concatenate(datasets.map((item) => item.semiMinor), Float32Array),
+    rotation: concatenate(datasets.map((item) => item.rotation), Float32Array),
+    time: times,
+    colors: concatenate(datasets.map((item) => item.colors), Uint32Array),
+    extent,
+    index: buildCompactSpatialIndex(x, y),
+    timeHistogram: buildFineTimeHistogram(times, timeMin, timeMax),
+  };
+  return {
+    dataset,
+    activeRows: active.summary.rowCount,
+    summary: {
+      name: sources.length === 1 ? active.summary.name : `${sources.length} datasets`,
+      rowCount: x.length,
+      timeMin,
+      timeMax,
+      invalidRows: summaries.reduce((sum, item) => sum + item.invalidRows, 0),
+      invalidTimestamps: summaries.reduce((sum, item) => sum + (item.invalidTimestamps ?? 0), 0),
+      coordinateFailures: summaries.reduce((sum, item) => sum + (item.coordinateFailures ?? 0), 0),
+      projectionClampedRows: summaries.reduce((sum, item) => sum + (item.projectionClampedRows ?? 0), 0),
+    },
+  };
 }
 
 function formatCompact(value: number): string {
@@ -471,19 +539,24 @@ export function App() {
         clearDatasetUi();
         return;
       }
-      current.loadDataset(tab.dataset, tab.summary, tab.engineState);
+      const combined = combinedMapDataset(tabsRef.current, tab.id);
+      if (!combined) {
+        clearDatasetUi();
+        return;
+      }
+      current.loadDataset(combined.dataset, combined.summary);
       applyColorMode(tab);
-      setRowCount(tab.summary.rowCount);
-      setSummary(tab.summary);
-      setTimeHistogram(tab.dataset.timeHistogram);
+      setRowCount(combined.activeRows);
+      setSummary(combined.summary);
+      setTimeHistogram(combined.dataset.timeHistogram);
       setMetrics(EMPTY_METRICS);
       const hasTimes =
-        Number.isFinite(tab.summary.timeMin) &&
-        Number.isFinite(tab.summary.timeMax) &&
-        tab.summary.timeMax > tab.summary.timeMin;
+        Number.isFinite(combined.summary.timeMin) &&
+        Number.isFinite(combined.summary.timeMax) &&
+        combined.summary.timeMax > combined.summary.timeMin;
       if (hasTimes) {
-        setTimeMinimum(tab.summary.timeMin);
-        setTimeMaximum(tab.summary.timeMax);
+        setTimeMinimum(combined.summary.timeMin);
+        setTimeMaximum(combined.summary.timeMax);
         const restoredRange =
           tab.timeFilterRange ?? tab.engineState?.timeRange;
         if (restoredRange) {
@@ -492,23 +565,23 @@ export function App() {
         setTimeStart(
           restoredRange && Number.isFinite(restoredRange[0])
             ? restoredRange[0]
-            : tab.summary.timeMin,
+            : combined.summary.timeMin,
         );
         setTimeEnd(
           restoredRange && Number.isFinite(restoredRange[1])
             ? restoredRange[1]
-            : tab.summary.timeMax,
+            : combined.summary.timeMax,
         );
         const restoredView = tab.timeViewRange;
         setTimeViewStart(
           restoredView && Number.isFinite(restoredView[0])
             ? restoredView[0]
-            : tab.summary.timeMin,
+            : combined.summary.timeMin,
         );
         setTimeViewEnd(
           restoredView && Number.isFinite(restoredView[1])
             ? restoredView[1]
-            : tab.summary.timeMax,
+            : combined.summary.timeMax,
         );
       } else {
         setTimeMinimum(0);
@@ -519,16 +592,16 @@ export function App() {
         setTimeViewEnd(1);
       }
       setVisibleIndices(
-        current.visibleCount === tab.summary.rowCount
+        current.visibleCount === combined.summary.rowCount
           ? null
-          : current.visibleIndices(),
+          : current.visibleIndices().filter((index) => index < combined.activeRows),
       );
       csvImportLog("dataset activated", {
         tabId: tab.id,
         schemaKey: tab.schemaKey,
         files: tab.files.map((file) => file.name),
-        rows: tab.summary.rowCount,
-        datasetRows: tab.dataset.x.length,
+        rows: combined.summary.rowCount,
+        datasetRows: combined.dataset.x.length,
         tableRows: tab.tableData?.rowCount ?? 0,
         visibleRows: current.visibleCount,
         timeRange: current.captureState().timeRange,
@@ -1380,16 +1453,17 @@ export function App() {
     if (id != null) {
       replaceTabs((current) =>
         current.map((tab) =>
-          tab.id === id ? { ...tab, timeFilterRange: [start, end] } : tab,
+          tab.kind === "csv" ? {...tab, timeFilterRange: [start, end]} : tab,
         ),
       );
     }
     if (!engineRef.current) return;
     engineRef.current.setTimeRange(start, end);
+    const activeRows = activeTab?.summary?.rowCount ?? rowCount;
     setVisibleIndices(
-      engineRef.current.visibleCount === rowCount
+      engineRef.current.visibleCount === engineRef.current.count
         ? null
-        : engineRef.current.visibleIndices(),
+        : engineRef.current.visibleIndices().filter((index) => index < activeRows),
     );
   };
 
@@ -1400,7 +1474,7 @@ export function App() {
     if (id == null) return;
     replaceTabs((current) =>
       current.map((tab) =>
-        tab.id === id ? { ...tab, timeViewRange: [start, end] } : tab,
+        tab.kind === "csv" ? {...tab, timeViewRange: [start, end]} : tab,
       ),
     );
   };
@@ -1428,6 +1502,7 @@ export function App() {
     const mapping = activeTab.mapping;
     const lines = [exportColumns.map(csvCell).join(",")];
     for (const index of engineRef.current.selectedIndices()) {
+      if (activeTab.summary && index >= activeTab.summary.rowCount) continue;
       const row = engineRef.current.row(index);
       const mappedValue = (column: string): string | number => {
         if (activeTab.kind === "synthetic") {
