@@ -225,24 +225,6 @@ function appendableDataset(
   };
 }
 
-function appendTransferList(
-  base: AppendableDataset,
-  tableBase?: PackedTableData,
-): Transferable[] {
-  return [
-    base.x.buffer,
-    base.y.buffer,
-    base.semiMajor.buffer,
-    base.semiMinor.buffer,
-    base.rotation.buffer,
-    base.time.buffer,
-    base.colors.buffer,
-    ...(tableBase?.columns.map((column) =>
-      column.kind === "number" ? column.values.buffer : column.codes.buffer
-    ) ?? []),
-  ];
-}
-
 function workspaceManifest(
   tabs: readonly DatasetTab[],
   activeTabId: number | null,
@@ -824,9 +806,10 @@ export function App() {
         colorField: chosenColor,
         colorPalette: chosenPalette,
         colorValueMode: chosenColorValueMode,
-        dataset: null,
-        tableData: null,
-        summary: null,
+        dataset: refreshedExisting?.dataset ?? null,
+        tableData: refreshedExisting?.tableData ?? null,
+        summary: refreshedExisting?.summary ?? null,
+        engineState: refreshedExisting?.engineState,
         timeFilterRange:
           refreshedExisting?.timeFilterRange ?? recovery?.timeFilterRange,
         timeViewRange: refreshedExisting?.timeViewRange ?? recovery?.timeViewRange,
@@ -851,7 +834,7 @@ export function App() {
       };
       activeTabIdRef.current = id;
       setActiveTabId(id);
-      clearDatasetUi();
+      if (!refreshedExisting) clearDatasetUi();
       setError(null);
       setProgress({ phase: "parsing", completed: 0, total: 1 });
 
@@ -862,23 +845,22 @@ export function App() {
           ? appendableDataset(previousDataset, previousSummary)
           : undefined;
       const tableBase = refreshedExisting?.tableData ?? undefined;
-      worker.postMessage(
-        {
-          type: "parse",
-          requestId,
-          files: group.files,
-          columns: loadingTab.mapping!,
-          tableColumns: loadingTab.columns,
-          colorField:
-            chosenColor === UNIFORM_COLOR_FIELD ? undefined : chosenColor,
-          colorPalette: chosenPalette,
-          colorValueMode: chosenColorValueMode,
-          base,
-          tableBase,
-          totalFileCount: allFiles.length,
-        },
-        base ? appendTransferList(base, tableBase) : [],
-      );
+      // Let structured cloning copy append bases. Transferring these buffers
+      // would detach the active map and table while the worker parses new rows.
+      worker.postMessage({
+        type: "parse",
+        requestId,
+        files: group.files,
+        columns: loadingTab.mapping!,
+        tableColumns: loadingTab.columns,
+        colorField:
+          chosenColor === UNIFORM_COLOR_FIELD ? undefined : chosenColor,
+        colorPalette: chosenPalette,
+        colorValueMode: chosenColorValueMode,
+        base,
+        tableBase,
+        totalFileCount: allFiles.length,
+      });
     },
     [captureActiveState, clearDatasetUi, replaceTabs],
   );
