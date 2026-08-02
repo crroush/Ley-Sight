@@ -17,6 +17,14 @@ import { Circle as CircleStyle, Fill, Stroke, Style } from "ol/style.js";
 
 import { TerrariumTerrainProvider } from "./workers/terrain";
 import {
+  initialViewshedResultState,
+  reduceViewshedResult,
+  VisibilityObjectUrl,
+  viewshedPayloadError,
+  type ViewshedResultAction,
+  type ViewshedResultState,
+} from "./lib/viewshedResult";
+import {
   groundCollectorElevationM,
   isProfileSampleBlocked,
   modeledProfileElevationM,
@@ -118,6 +126,7 @@ export function ViewshedApp() {
   const lastExtentStrRef = useRef<string>("");
   const isComputingRef = useRef<boolean>(false);
   const runIdRef = useRef<number>(0);
+  const visibilityUrlRef = useRef(new VisibilityObjectUrl());
   const profileRequestIdRef = useRef<number>(0);
 
   // Application State
@@ -140,6 +149,15 @@ export function ViewshedApp() {
   const [baseMapOpacity, setBaseMapOpacity] = useState<number>(100);
   const [isComputing, setIsComputing] = useState<boolean>(false);
   const [terrainWarning, setTerrainWarning] = useState<string | null>(null);
+  const [resultState, setResultState] = useState<ViewshedResultState>(initialViewshedResultState);
+  const resultStateRef = useRef(resultState);
+  resultStateRef.current = resultState;
+
+  const updateResult = useCallback((action: ViewshedResultAction) => {
+    const next = reduceViewshedResult(resultStateRef.current, action);
+    resultStateRef.current = next;
+    setResultState(next);
+  }, []);
   const [advancedExpanded, setAdvancedExpanded] = useState<boolean>(false);
   const [observersDropdownOpen, setObserversDropdownOpen] =
     useState<boolean>(false);
@@ -288,13 +306,29 @@ export function ViewshedApp() {
 
     workerRef.current.onmessage = (event) => {
       try {
-        if (!event.data) return;
+        if (!event.data || typeof event.data !== "object") throw new Error("The worker returned an empty or malformed response.");
 
         const payload = event.data.payload || event.data;
-        const { runId } = payload;
+        const payloadRunId = payload.runId;
+
+        // A response without an attributable run is malformed. Report it
+        // against the current run rather than accidentally leaving that run
+        // in the running state forever.
+        if (!Number.isInteger(payloadRunId)) {
+          updateResult({
+            type: "ERROR",
+            runId: runIdRef.current,
+            timestamp: Date.now(),
+            message: "The worker response did not include a valid run identifier.",
+          });
+          isComputingRef.current = false;
+          setIsComputing(false);
+          return;
+        }
+        const runId = payloadRunId as number;
 
         // 1. Immediately ignore any messages from obsolete, cancelled runs
-        if (runId !== undefined && runId !== runIdRef.current) return;
+        if (runId !== runIdRef.current) return;
 
         if (event.data.type === "COMPUTE_COMPLETE") {
           const { buffer, nx, ny, bounds } = payload;
@@ -305,7 +339,8 @@ export function ViewshedApp() {
               : null
           );
 
-          if (buffer && nx && ny && bounds) {
+          const payloadError = viewshedPayloadError(payload);
+          if (!payloadError) {
             const canvas = document.createElement("canvas");
             canvas.width = nx;
             canvas.height = ny;
@@ -324,7 +359,7 @@ export function ViewshedApp() {
                   setIsComputing(false);
 
                   if (blob && mapRef.current) {
-                    const blobUrl = URL.createObjectURL(blob);
+                    const blobUrl = visibilityUrlRef.current.replace(blob);
                     visibilityLayerRef.current.setSource(
                       new ImageStatic({
                         url: blobUrl,
@@ -334,16 +369,26 @@ export function ViewshedApp() {
                     );
                     visibilityLayerRef.current.changed();
                     mapRef.current.render();
+                    updateResult({ type: "SUCCESS", runId, timestamp: Date.now() });
+                  } else if (!blob) {
+                    updateResult({ type: "ERROR", runId, timestamp: Date.now(), message: "The viewshed image could not be serialized." });
+                  } else {
+                    updateResult({ type: "ERROR", runId, timestamp: Date.now(), message: "The map is unavailable for the viewshed result." });
                   }
                 }
               }, "image/png");
 
               return; // Crucial: return here so we don't prematurely hit the fallback
             }
+            updateResult({ type: "ERROR", runId, timestamp: Date.now(), message: "The browser could not create a canvas for the viewshed image." });
+          } else {
+            updateResult({ type: "ERROR", runId, timestamp: Date.now(), message: payloadError });
           }
         } else if (event.data.type === "COMPUTE_FAILED") {
-          console.error("Worker Computation Error:", payload.error);
-          setTerrainWarning(`Terrain analysis failed: ${payload.error}`);
+          const message = typeof payload.error === "string" && payload.error.trim() ? payload.error : "The viewshed worker failed without an error message.";
+          updateResult({ type: "ERROR", runId, timestamp: Date.now(), message });
+        } else {
+          throw new Error("The worker returned an unrecognized response.");
         }
 
         // 3. Fallback: If we reached here (missing buffer, failed ctx, or COMPUTE_FAILED),
@@ -351,13 +396,17 @@ export function ViewshedApp() {
         isComputingRef.current = false;
         setIsComputing(false);
       } catch (err) {
-        console.error("Worker message parsing failed:", err);
+        const message = err instanceof Error ? err.message : "The worker response could not be processed.";
+        updateResult({ type: "ERROR", runId: runIdRef.current, timestamp: Date.now(), message });
         isComputingRef.current = false;
         setIsComputing(false);
       }
     };
-    return () => workerRef.current?.terminate();
-  }, []);
+    return () => {
+      workerRef.current?.terminate();
+      visibilityUrlRef.current.clear();
+    };
+  }, [updateResult]);
 
   // --------------------------------------------------------------------------
   // Worker Trigger Dispatcher
@@ -369,6 +418,7 @@ export function ViewshedApp() {
     if (activeIdxs.length === 0) {
       visibilityLayerRef.current.setVisible(false);
       visibilityLayerRef.current.setSource(null);
+      visibilityUrlRef.current.clear();
       isComputingRef.current = false;
       setIsComputing(false);
       return;
@@ -411,6 +461,11 @@ export function ViewshedApp() {
 
     runIdRef.current += 1;
     const currentRunId = runIdRef.current;
+
+    // Do not display a previous run as though it belongs to the new inputs.
+    visibilityLayerRef.current.setSource(null);
+    visibilityUrlRef.current.clear();
+    updateResult({ type: "START", runId: currentRunId });
 
     isComputingRef.current = true;
     setIsComputing(true);
@@ -1333,6 +1388,11 @@ export function ViewshedApp() {
             {terrainWarning}
           </div>
         )}
+        {resultState.status === "error" && resultState.errorMessage && (
+          <div role="alert" aria-live="assertive" style={{ color: "#991b1b", background: "#fee2e2", border: "1px solid #ef4444", padding: "6px 10px", borderRadius: "4px", fontWeight: 600 }}>
+            Viewshed failed: {resultState.errorMessage}
+          </div>
+        )}
         {/* Main Controls Row */}
         <div
           style={{
@@ -1415,6 +1475,7 @@ export function ViewshedApp() {
                       setActiveCollectors(none);
                       activeCollectorsRef.current = none;
                       visibilityLayerRef.current.setSource(null);
+                      visibilityUrlRef.current.clear();
                       visibilityLayerRef.current.changed();
                       setIsComputing(false);
                       isComputingRef.current = false;
