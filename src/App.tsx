@@ -157,6 +157,10 @@ type RecolorPending = {
 
 type PendingOperation = LoadPending | RecolorPending;
 
+function csvImportLog(event: string, details: Record<string, unknown>): void {
+  console.info(`[LeySight CSV] ${event}`, details);
+}
+
 function formatCompact(value: number): string {
   return Intl.NumberFormat(undefined, {
     notation: value >= 100_000 ? "compact" : "standard",
@@ -374,8 +378,17 @@ export function App() {
     }
     const timeout = window.setTimeout(() => {
       setPersistenceState("saving");
-      void saveWorkspaceManifest(workspaceManifest(tabs, activeTabId))
-        .then(() => setPersistenceState("available"))
+      const manifest = workspaceManifest(tabs, activeTabId);
+      void saveWorkspaceManifest(manifest)
+        .then(() => {
+          csvImportLog("OPFS manifest saved", {
+            tabs: manifest.tabs.map((tab) => ({
+              schemaKey: tab.schemaKey,
+              files: tab.files.length,
+            })),
+          });
+          setPersistenceState("available");
+        })
         .catch((caught) => {
           setPersistenceState("error");
           setError(
@@ -510,6 +523,16 @@ export function App() {
           ? null
           : current.visibleIndices(),
       );
+      csvImportLog("dataset activated", {
+        tabId: tab.id,
+        schemaKey: tab.schemaKey,
+        files: tab.files.map((file) => file.name),
+        rows: tab.summary.rowCount,
+        datasetRows: tab.dataset.x.length,
+        tableRows: tab.tableData?.rowCount ?? 0,
+        visibleRows: current.visibleCount,
+        timeRange: current.captureState().timeRange,
+      });
       if (fit) current.fitToData();
     },
     [applyColorMode, clearDatasetUi],
@@ -845,6 +868,18 @@ export function App() {
           ? appendableDataset(previousDataset, previousSummary)
           : undefined;
       const tableBase = refreshedExisting?.tableData ?? undefined;
+      csvImportLog(refreshedExisting ? "append started" : "import started", {
+        requestId,
+        tabId: id,
+        schemaKey: group.schemaKey,
+        incomingFiles: group.files.map((file) => file.name),
+        priorFiles: refreshedExisting?.files.map((file) => file.name) ?? [],
+        priorRows: previousSummary?.rowCount ?? 0,
+        priorDatasetRows: base?.x.length ?? 0,
+        priorTableRows: tableBase?.rowCount ?? 0,
+        totalFiles: allFiles.length,
+        persistedFiles: allPersistedFiles.length,
+      });
       // Let structured cloning copy append bases. Transferring these buffers
       // would detach the active map and table while the worker parses new rows.
       worker.postMessage({
@@ -895,6 +930,18 @@ export function App() {
         tab.schemaKey === group.schemaKey &&
         tab.status === "ready",
     );
+    csvImportLog("queue advanced", {
+      schemaKey: group.schemaKey,
+      incomingFiles: group.files.map((file) => file.name),
+      matchedTabId: existing?.id ?? null,
+      matchedRows: existing?.summary?.rowCount ?? 0,
+      availableTabs: tabsRef.current.map((tab) => ({
+        id: tab.id,
+        schemaKey: tab.schemaKey,
+        status: tab.status,
+        rows: tab.summary?.rowCount ?? 0,
+      })),
+    });
     if (existing?.mapping) {
       startCsvImportRef.current(group, existing.mapping, existing);
     } else {
@@ -957,6 +1004,14 @@ export function App() {
         }
       }
       importQueueRef.current.push(...grouped.values());
+      csvImportLog("files queued", {
+        opfsSupported: canPersist,
+        groups: Array.from(grouped.values(), (group) => ({
+          schemaKey: group.schemaKey,
+          files: group.files.map((file) => file.name),
+          persistedFiles: group.persistedFiles.length,
+        })),
+      });
       advanceImportQueueRef.current();
     } catch (caught) {
       if (canPersist) setPersistenceState("error");
@@ -1180,6 +1235,15 @@ export function App() {
         (tab) => tab.id === pending.tabId,
       );
       if (currentTab) {
+        csvImportLog("worker complete", {
+          requestId: message.requestId,
+          tabId: currentTab.id,
+          schemaKey: currentTab.schemaKey,
+          receivedRows: message.summary.rowCount,
+          receivedTableRows: message.tableData?.rowCount ?? 0,
+          files: currentTab.files.map((file) => file.name),
+          persistedFiles: currentTab.persistedFiles.length,
+        });
         const readyTab: DatasetTab = {
           ...currentTab,
           dataset: message.dataset,
@@ -1260,6 +1324,14 @@ export function App() {
       return;
     }
     if (message.type === "error") {
+      csvImportLog("worker error", {
+        requestId: message.requestId,
+        tabId: pending.tabId,
+        operation: pending.kind,
+        message: message.message,
+        recoveredDatasetRows: message.recoveredBase?.x.length ?? 0,
+        recoveredTableRows: message.recoveredTableBase?.rowCount ?? 0,
+      });
       if (pending.kind === "load") {
         if (pending.previousTab) {
           const restored = pending.previousTab;
