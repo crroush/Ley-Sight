@@ -2080,37 +2080,6 @@ export function App() {
         )}
       </div>
 
-      <nav className="dataset-tabs" role="tablist" aria-label="CSV data tables">
-        <span className="dataset-tabs-label" aria-hidden="true">TABLES</span>
-        {tabs.length ? (
-          tabs.map((tab, index) => (
-            <button
-              key={tab.id}
-              id={`dataset-tab-${tab.id}`}
-              type="button"
-              role="tab"
-              aria-selected={tab.id === activeTabId}
-              aria-controls={`dataset-table-panel-${tab.id}`}
-              aria-label={`Table ${index + 1}: ${tab.title}`}
-              className={tab.id === activeTabId ? "is-active" : ""}
-              onClick={() => activateTab(tab.id)}
-            >
-              <span>
-                <strong>TABLE {index + 1}</strong>
-                {tab.title}
-              </span>
-              <small>
-                {tab.status === "loading"
-                  ? "loading"
-                  : formatCompact(tab.summary?.rowCount ?? 0)}
-              </small>
-            </button>
-          ))
-        ) : (
-          <span className="empty-tabs">No datasets loaded</span>
-        )}
-      </nav>
-
       <main
         className="workspace"
         ref={workspaceRef}
@@ -2224,23 +2193,51 @@ export function App() {
         )}
 
         {showTable && (
-          <VirtualDataTable
-            key={activeTabId ?? "empty"}
-            panelId={activeTab ? `dataset-table-panel-${activeTab.id}` : undefined}
-            labelledBy={activeTab ? `dataset-tab-${activeTab.id}` : undefined}
-            engine={engine}
-            rowCount={rowCount}
-            columns={activeTab?.columns ?? []}
-            mapping={activeTab?.mapping}
-            tableData={activeTab?.tableData ?? null}
-            visibleIndices={visibleIndices}
-            selectionRevision={selection.revision}
-            onCollapse={() => setShowTable(false)}
-            onSelectRow={(index, toggle) => {
-              if (toggle) engineRef.current?.toggleIndex(index);
-              else engineRef.current?.selectIndices([index], true);
-            }}
-          />
+          <div className="table-workspace">
+            <nav className="dataset-tabs" role="tablist" aria-label="CSV data tables">
+              <span className="dataset-tabs-label" aria-hidden="true">TABLES</span>
+              {tabs.map((tab, index) => (
+                <button
+                  key={tab.id}
+                  id={`dataset-tab-${tab.id}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab.id === activeTabId}
+                  aria-controls={`dataset-table-panel-${tab.id}`}
+                  aria-label={`Table ${index + 1}: ${tab.title}`}
+                  className={tab.id === activeTabId ? "is-active" : ""}
+                  onClick={() => activateTab(tab.id)}
+                >
+                  <span>
+                    <strong>TABLE {index + 1}</strong>
+                    {tab.title}
+                  </span>
+                  <small>
+                    {tab.status === "loading"
+                      ? "loading"
+                      : formatCompact(tab.summary?.rowCount ?? 0)}
+                  </small>
+                </button>
+              ))}
+            </nav>
+            <VirtualDataTable
+              key={activeTabId ?? "empty"}
+              panelId={activeTab ? `dataset-table-panel-${activeTab.id}` : undefined}
+              labelledBy={activeTab ? `dataset-tab-${activeTab.id}` : undefined}
+              engine={engine}
+              rowCount={rowCount}
+              columns={activeTab?.columns ?? []}
+              mapping={activeTab?.mapping}
+              tableData={activeTab?.tableData ?? null}
+              visibleIndices={visibleIndices}
+              selectionRevision={selection.revision}
+              onCollapse={() => setShowTable(false)}
+              onSelectRow={(index, toggle) => {
+                if (toggle) engineRef.current?.toggleIndex(index);
+                else engineRef.current?.selectIndices([index], true);
+              }}
+            />
+          </div>
         )}
         {!showTable && (
           <button

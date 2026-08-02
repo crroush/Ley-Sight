@@ -44,7 +44,7 @@ button {
   --cyan: #38bdf8;
   --danger: #f87171;
   display: grid;
-  grid-template-rows: 44px 49px auto 34px minmax(0, 1fr) 26px;
+  grid-template-rows: 44px 49px auto minmax(0, 1fr) 26px;
   height: 100%;
   color: var(--text);
   background: var(--bg);
@@ -469,6 +469,12 @@ button {
   border-bottom: 1px solid var(--line);
   background: var(--panel);
   overflow-x: auto;
+}
+
+.table-workspace {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
 }
 
 .dataset-tabs-label {
