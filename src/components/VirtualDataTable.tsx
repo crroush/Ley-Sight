@@ -28,6 +28,8 @@ type SortState = {
 };
 
 type VirtualDataTableProps = {
+  panelId?: string;
+  labelledBy?: string;
   engine: FastPointEngine | null;
   rowCount: number;
   columns: string[];
@@ -153,6 +155,8 @@ function numericSortSource(
 }
 
 export function VirtualDataTable({
+  panelId,
+  labelledBy,
   engine,
   rowCount,
   columns,
@@ -383,6 +387,9 @@ export function VirtualDataTable({
 
   return (
     <section
+      id={panelId}
+      role="tabpanel"
+      aria-labelledby={labelledBy}
       className="table-panel"
       data-selection-revision={selectionRevision}
     >

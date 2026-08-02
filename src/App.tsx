@@ -2080,15 +2080,25 @@ export function App() {
         )}
       </div>
 
-      <nav className="dataset-tabs" aria-label="Dataset tables">
+      <nav className="dataset-tabs" role="tablist" aria-label="CSV data tables">
+        <span className="dataset-tabs-label" aria-hidden="true">TABLES</span>
         {tabs.length ? (
-          tabs.map((tab) => (
+          tabs.map((tab, index) => (
             <button
               key={tab.id}
+              id={`dataset-tab-${tab.id}`}
+              type="button"
+              role="tab"
+              aria-selected={tab.id === activeTabId}
+              aria-controls={`dataset-table-panel-${tab.id}`}
+              aria-label={`Table ${index + 1}: ${tab.title}`}
               className={tab.id === activeTabId ? "is-active" : ""}
               onClick={() => activateTab(tab.id)}
             >
-              <span>{tab.title}</span>
+              <span>
+                <strong>TABLE {index + 1}</strong>
+                {tab.title}
+              </span>
               <small>
                 {tab.status === "loading"
                   ? "loading"
@@ -2216,6 +2226,8 @@ export function App() {
         {showTable && (
           <VirtualDataTable
             key={activeTabId ?? "empty"}
+            panelId={activeTab ? `dataset-table-panel-${activeTab.id}` : undefined}
+            labelledBy={activeTab ? `dataset-tab-${activeTab.id}` : undefined}
             engine={engine}
             rowCount={rowCount}
             columns={activeTab?.columns ?? []}
