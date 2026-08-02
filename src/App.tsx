@@ -2040,8 +2040,8 @@ export function App() {
         )}
 
         {showTimeline && (
+          // Keep one time control mounted while its active dataset changes.
           <HistogramRange
-            key={activeTabId ?? "empty-time"}
             bins={timeHistogram}
             minimum={timeMinimum}
             maximum={timeMaximum}
