@@ -176,6 +176,11 @@ function concatenate<T extends Float64Array | Float32Array | Uint32Array>(
   return result;
 }
 
+const combinedDatasetCache = new Map<number, {
+  sources: PackedDataset[];
+  value: {dataset: PackedDataset; summary: DatasetSummary; activeRows: number};
+}>();
+
 function combinedMapDataset(tabs: DatasetTab[], activeId: number): {
   dataset: PackedDataset;
   summary: DatasetSummary;
@@ -188,6 +193,21 @@ function combinedMapDataset(tabs: DatasetTab[], activeId: number): {
   )];
   const datasets = sources.map((tab) => tab.dataset!);
   const summaries = sources.map((tab) => tab.summary!);
+  if (datasets.length === 1) {
+    return {
+      dataset: active.dataset,
+      summary: active.summary,
+      activeRows: active.summary.rowCount,
+    };
+  }
+  const cached = combinedDatasetCache.get(activeId);
+  if (
+    cached &&
+    cached.sources.length === datasets.length &&
+    cached.sources.every((dataset, index) => dataset === datasets[index])
+  ) {
+    return cached.value;
+  }
   const x = concatenate(datasets.map((dataset) => dataset.x), Float64Array);
   const y = concatenate(datasets.map((dataset) => dataset.y), Float64Array);
   const times = concatenate(datasets.map((dataset) => dataset.time), Float64Array);
@@ -213,7 +233,7 @@ function combinedMapDataset(tabs: DatasetTab[], activeId: number): {
     index: buildCompactSpatialIndex(x, y),
     timeHistogram: buildFineTimeHistogram(times, timeMin, timeMax),
   };
-  return {
+  const value = {
     dataset,
     activeRows: active.summary.rowCount,
     summary: {
@@ -227,6 +247,8 @@ function combinedMapDataset(tabs: DatasetTab[], activeId: number): {
       projectionClampedRows: summaries.reduce((sum, item) => sum + (item.projectionClampedRows ?? 0), 0),
     },
   };
+  combinedDatasetCache.set(activeId, {sources: datasets, value});
+  return value;
 }
 
 function formatCompact(value: number): string {
@@ -341,6 +363,7 @@ export function App() {
   const workspaceRef = useRef<HTMLElement>(null);
   const tabsRef = useRef<DatasetTab[]>([]);
   const activeTabIdRef = useRef<number | null>(null);
+  const combinedStateRef = useRef(new Map<number, EngineDatasetState>());
   const pendingRef = useRef<PendingOperation | null>(null);
   const requestIdRef = useRef(0);
   const tabIdRef = useRef(0);
@@ -544,7 +567,11 @@ export function App() {
         clearDatasetUi();
         return;
       }
-      current.loadDataset(combined.dataset, combined.summary);
+      current.loadDataset(
+        combined.dataset,
+        combined.summary,
+        combinedStateRef.current.get(tab.id),
+      );
       applyColorMode(tab);
       setRowCount(combined.activeRows);
       setSummary(combined.summary);
@@ -615,10 +642,12 @@ export function App() {
     const id = activeTabIdRef.current;
     const current = engineRef.current;
     if (id == null || !current || current.count === 0) return;
+    const state = current.captureState();
+    combinedStateRef.current.set(id, state);
     replaceTabs((existingTabs) =>
       existingTabs.map((tab) =>
         tab.id === id && tab.dataset
-          ? { ...tab, engineState: current.captureState() }
+          ? { ...tab, engineState: state }
           : tab,
       ),
     );
@@ -1385,7 +1414,16 @@ export function App() {
           ),
         );
         if (activeTabIdRef.current === updated.id) {
-          engineRef.current?.setColors(message.colors);
+          const orderedTabs = [updated, ...tabsRef.current.filter(
+            (candidate) => candidate.id !== updated.id && candidate.dataset,
+          )];
+          const combinedColors = concatenate(
+            orderedTabs.map((candidate) => candidate.dataset!.colors),
+            Uint32Array,
+          );
+          const cached = combinedDatasetCache.get(updated.id);
+          if (cached) cached.value.dataset.colors = combinedColors;
+          engineRef.current?.setColors(combinedColors);
           engineRef.current?.setColorMode("source");
         }
       } else {
@@ -1566,8 +1604,13 @@ export function App() {
     const current = engineRef.current;
     if (!current) return;
     action(current);
+    const activeRows = tabsRef.current.find(
+      (tab) => tab.id === activeTabIdRef.current,
+    )?.summary?.rowCount ?? rowCount;
     setVisibleIndices(
-      current.visibleCount === rowCount ? null : current.visibleIndices(),
+      current.visibleCount === current.count
+        ? null
+        : current.visibleIndices().filter((index) => index < activeRows),
     );
   };
 
