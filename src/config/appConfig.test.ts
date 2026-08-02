@@ -23,6 +23,17 @@ describe("application configuration", () => {
     assert.deepEqual(config.wmsPresets.map(({id}) => id), ["weather"]);
   });
 
+  it("rejects explicit null layer lists instead of treating them as omitted", () => {
+    assert.throws(
+      () => validateConfig({baseLayers: null}),
+      /baseLayers: must contain at least one layer/,
+    );
+    assert.throws(
+      () => validateConfig({wmsPresets: null}),
+      /wmsPresets: must be an array/,
+    );
+  });
+
   it("reports the path of invalid nested definitions", () => {
     assert.throws(
       () => validateConfig({baseLayers: [{id: "tiles", name: "Tiles", type: "xyz"}]}),

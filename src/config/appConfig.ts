@@ -245,11 +245,15 @@ export function validateConfig(value: unknown): AppConfig {
     ? {}
     : validateCsvRules(value.csvColumnDetection, "csvColumnDetection");
   const baseLayers = validateBaseLayers(
-    value.baseLayers ?? DEFAULT_APP_CONFIG.baseLayers,
+    value.baseLayers === undefined
+      ? DEFAULT_APP_CONFIG.baseLayers
+      : value.baseLayers,
     "baseLayers",
   );
   const wmsPresets = validateManagedLayerPresets(
-    value.wmsPresets ?? DEFAULT_APP_CONFIG.wmsPresets,
+    value.wmsPresets === undefined
+      ? DEFAULT_APP_CONFIG.wmsPresets
+      : value.wmsPresets,
     "wmsPresets",
   );
   const baseLayerIds = new Set(baseLayers.map(({id}) => id));
