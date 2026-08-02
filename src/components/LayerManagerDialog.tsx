@@ -5,6 +5,7 @@ import type {
   ManagedLayerDefinition,
   MapLayerSettings,
 } from "../lib/types";
+import {ModalDialog} from "./ModalDialog";
 
 type LayerManagerDialogProps = {
   baseLayers: BaseLayerDefinition[];
@@ -75,18 +76,18 @@ export function LayerManagerDialog({
   };
 
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div
-        className="dialog layer-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="layers-title"
-      >
+    <ModalDialog
+      className="layer-dialog"
+      titleId="layers-title"
+      descriptionId="layers-description"
+      onDismiss={onClose}
+      initialFocus="#layers-title"
+    >
         <div className="dialog-header">
           <div>
             <span className="eyebrow">MAP</span>
-            <h2 id="layers-title">Layer manager</h2>
-            <p>Choose base tiles and add browser-accessible WMS or XYZ layers.</p>
+            <h2 id="layers-title" tabIndex={-1}>Layer manager</h2>
+            <p id="layers-description">Choose base tiles and add browser-accessible WMS or XYZ layers.</p>
           </div>
         </div>
 
@@ -412,7 +413,6 @@ export function LayerManagerDialog({
         <div className="dialog-actions">
           <button className="button primary" onClick={onClose}>Done</button>
         </div>
-      </div>
-    </div>
+    </ModalDialog>
   );
 }
