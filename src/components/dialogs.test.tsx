@@ -92,3 +92,29 @@ test("CSV mapping exposes labels and rejects duplicate coordinate columns", () =
   assert.equal(longitude.getAttribute("aria-describedby"), error.id);
   assert.equal(screen.getByRole("button", {name: "Load data"}).hasAttribute("disabled"), true);
 });
+
+test("CSV mapping resets inferred fields when another CSV replaces the open dialog", () => {
+  const detectionRules = {
+    latitude: [{pattern: "^(lat|y)$", score: 10}],
+    longitude: [{pattern: "^(lon|x)$", score: 10}],
+    time: [{pattern: "^time$", score: 10}],
+  };
+  const props = {
+    files: [] as File[],
+    detectionRules,
+    onCancel: () => undefined,
+    onConfirm: () => undefined,
+  };
+  const view = render(
+    <CsvMappingDialog {...props} columns={["lat", "lon", "time"]} />,
+  );
+  assert.equal(screen.getByLabelText<HTMLSelectElement>("Time column").value, "time");
+
+  view.rerender(
+    <CsvMappingDialog {...props} columns={["y", "x", "category"]} />,
+  );
+
+  assert.equal(screen.getByLabelText<HTMLSelectElement>("Latitude column").value, "y");
+  assert.equal(screen.getByLabelText<HTMLSelectElement>("Longitude column").value, "x");
+  assert.equal(screen.getByLabelText<HTMLSelectElement>("Time column").value, "");
+});

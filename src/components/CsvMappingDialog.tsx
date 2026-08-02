@@ -27,6 +27,9 @@ export function CsvMappingDialog({
   );
   const [mapping, setMapping] = useState(defaults);
   const [timestampSamples, setTimestampSamples] = useState<string[]>([]);
+  useEffect(() => {
+    setMapping(defaults);
+  }, [defaults]);
   type ColumnKey = Exclude<keyof CsvColumnMapping, "timestampInterpretation">;
   const fields: Array<[ColumnKey, string, boolean]> = [
     ["latitude", "Latitude column", true],
