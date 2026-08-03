@@ -620,8 +620,7 @@ export function App() {
       if (hasTimes) {
         setTimeMinimum(combined.summary.timeMin);
         setTimeMaximum(combined.summary.timeMax);
-        const restoredRange =
-          tab.timeFilterRange ?? tab.engineState?.timeRange;
+        const restoredRange = tab.timeFilterRange;
         const effectiveRange = restoredRange ?? combinedTimeRangeRef.current;
         combinedTimeRangeRef.current = [...effectiveRange];
         current.setTimeRange(effectiveRange[0], effectiveRange[1]);
@@ -1011,9 +1010,14 @@ export function App() {
             ? chosenColor
             : undefined,
       };
-      activeTabIdRef.current = id;
-      setActiveTabId(id);
-      if (!refreshedExisting) clearDatasetUi();
+      const keepCurrentTabActive = Boolean(
+        refreshedExisting && activeTabIdRef.current !== id,
+      );
+      if (!keepCurrentTabActive) {
+        activeTabIdRef.current = id;
+        setActiveTabId(id);
+        if (!refreshedExisting) clearDatasetUi();
+      }
       setError(null);
       setProgress({ phase: "parsing", completed: 0, total: 1 });
 
@@ -1672,13 +1676,12 @@ export function App() {
 
   const showAllRows = (): void => {
     updateVisibility((current) => current.showAll());
+    combinedTimeRangeRef.current = [-Infinity, Infinity];
     setTimeStart(timeMinimum);
     setTimeEnd(timeMaximum);
-    const id = activeTabIdRef.current;
-    if (id == null) return;
     replaceTabs((current) =>
       current.map((tab) => {
-        if (tab.id !== id) return tab;
+        if (tab.kind !== "csv") return tab;
         const {timeFilterRange: _discarded, ...withoutTimeFilter} = tab;
         return withoutTimeFilter;
       }),
