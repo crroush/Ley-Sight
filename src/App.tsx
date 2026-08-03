@@ -59,6 +59,7 @@ import {
 import {buildFineTimeHistogram} from "./lib/timeHistogram";
 import {
   COLOR_PALETTES,
+  gradientColor,
   paletteCss,
   type ColorPalette,
 } from "./lib/colorPalettes";
@@ -180,6 +181,24 @@ function concatenate<T extends Float64Array | Float32Array | Uint32Array>(
   return result;
 }
 
+function displayColors(tab: DatasetTab): Uint32Array<ArrayBuffer> {
+  const dataset = tab.dataset!;
+  if (tab.colorField === UNIFORM_COLOR_FIELD) {
+    const colors = new Uint32Array(dataset.colors.length);
+    colors.fill(0x3288bdde);
+    return colors;
+  }
+  if (tab.colorField !== SYNTHETIC_TIME_FIELD) return dataset.colors;
+  const minimum = tab.summary?.timeMin ?? Number.NaN;
+  const maximum = tab.summary?.timeMax ?? Number.NaN;
+  const span = Math.max(1, maximum - minimum);
+  return Uint32Array.from(dataset.time, (value) =>
+    Number.isFinite(value) && Number.isFinite(minimum) && Number.isFinite(maximum)
+      ? gradientColor((value - minimum) / span, tab.colorPalette, 224)
+      : 0x64748bdd
+  ) as Uint32Array<ArrayBuffer>;
+}
+
 const combinedDatasetCache = new Map<number, {
   sources: PackedDataset[];
   value: {dataset: PackedDataset; summary: DatasetSummary; activeRows: number};
@@ -199,7 +218,10 @@ function combinedMapDataset(tabs: DatasetTab[], activeId: number): {
   const summaries = sources.map((tab) => tab.summary!);
   if (datasets.length === 1) {
     return {
-      dataset: active.dataset,
+      dataset: active.colorField === UNIFORM_COLOR_FIELD ||
+          active.colorField === SYNTHETIC_TIME_FIELD
+        ? {...active.dataset, colors: displayColors(active)}
+        : active.dataset,
       summary: active.summary,
       activeRows: active.summary.rowCount,
     };
@@ -232,7 +254,7 @@ function combinedMapDataset(tabs: DatasetTab[], activeId: number): {
     semiMinor: concatenate(datasets.map((item) => item.semiMinor), Float32Array),
     rotation: concatenate(datasets.map((item) => item.rotation), Float32Array),
     time: times,
-    colors: concatenate(datasets.map((item) => item.colors), Uint32Array),
+    colors: concatenate(sources.map(displayColors), Uint32Array),
     extent,
     index: buildCompactSpatialIndex(x, y),
     timeHistogram: buildFineTimeHistogram(times, timeMin, timeMax),
@@ -550,14 +572,14 @@ export function App() {
   const applyColorMode = useCallback((tab: DatasetTab): void => {
     const current = engineRef.current;
     if (!current) return;
-    current.setColorPalette(tab.colorPalette);
-    if (tab.colorField === UNIFORM_COLOR_FIELD) {
-      current.setColorMode("uniform");
-    } else if (tab.colorField === SYNTHETIC_TIME_FIELD) {
-      current.setColorMode("time");
-    } else {
-      current.setColorMode("source");
-    }
+    const orderedTabs = [tab, ...tabsRef.current.filter(
+      (candidate) => candidate.id !== tab.id && candidate.dataset,
+    )];
+    const colors = concatenate(orderedTabs.map(displayColors), Uint32Array);
+    const cached = combinedDatasetCache.get(tab.id);
+    if (cached) cached.value.dataset.colors = colors;
+    current.setColors(colors);
+    current.setColorMode("source");
   }, []);
 
   const loadTabIntoEngine = useCallback(
@@ -575,9 +597,6 @@ export function App() {
       const orderedTabs = [tab, ...tabsRef.current.filter(
         (candidate) => candidate.id !== tab.id && candidate.dataset && candidate.summary,
       )];
-      const hasRestoredMasks = orderedTabs.some((source) =>
-        datasetStateRef.current.has(source.id)
-      );
       current.loadDataset(
         combined.dataset,
         combined.summary,
@@ -604,20 +623,17 @@ export function App() {
         setTimeMaximum(combined.summary.timeMax);
         const restoredRange =
           tab.timeFilterRange ?? tab.engineState?.timeRange;
-        // setTimeRange rebuilds the entire visible mask. Only use it for
-        // recovery without saved masks; composed tab-switch masks already
-        // carry both the time range and manual hide/show operations.
-        if (restoredRange && !hasRestoredMasks) {
-          current.setTimeRange(restoredRange[0], restoredRange[1]);
-        }
+        const effectiveRange = restoredRange ?? combinedTimeRangeRef.current;
+        combinedTimeRangeRef.current = [...effectiveRange];
+        current.setTimeRange(effectiveRange[0], effectiveRange[1]);
         setTimeStart(
-          restoredRange && Number.isFinite(restoredRange[0])
-            ? restoredRange[0]
+          Number.isFinite(effectiveRange[0])
+            ? effectiveRange[0]
             : combined.summary.timeMin,
         );
         setTimeEnd(
-          restoredRange && Number.isFinite(restoredRange[1])
-            ? restoredRange[1]
+          Number.isFinite(effectiveRange[1])
+            ? effectiveRange[1]
             : combined.summary.timeMax,
         );
         const restoredView = tab.timeViewRange;
@@ -1455,7 +1471,7 @@ export function App() {
             (candidate) => candidate.id !== updated.id && candidate.dataset,
           )];
           const combinedColors = concatenate(
-            orderedTabs.map((candidate) => candidate.dataset!.colors),
+            orderedTabs.map(displayColors),
             Uint32Array,
           );
           const cached = combinedDatasetCache.get(updated.id);
