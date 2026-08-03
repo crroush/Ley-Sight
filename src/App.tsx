@@ -575,6 +575,9 @@ export function App() {
       const orderedTabs = [tab, ...tabsRef.current.filter(
         (candidate) => candidate.id !== tab.id && candidate.dataset && candidate.summary,
       )];
+      const hasRestoredMasks = orderedTabs.some((source) =>
+        datasetStateRef.current.has(source.id)
+      );
       current.loadDataset(
         combined.dataset,
         combined.summary,
@@ -601,7 +604,10 @@ export function App() {
         setTimeMaximum(combined.summary.timeMax);
         const restoredRange =
           tab.timeFilterRange ?? tab.engineState?.timeRange;
-        if (restoredRange) {
+        // setTimeRange rebuilds the entire visible mask. Only use it for
+        // recovery without saved masks; composed tab-switch masks already
+        // carry both the time range and manual hide/show operations.
+        if (restoredRange && !hasRestoredMasks) {
           current.setTimeRange(restoredRange[0], restoredRange[1]);
         }
         setTimeStart(
