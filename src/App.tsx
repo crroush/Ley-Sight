@@ -52,6 +52,10 @@ import type {
 } from "./lib/types";
 import { csvSchemaKey } from "./lib/csvSchema";
 import { extendEngineState } from "./lib/engineState";
+import {
+  composeCombinedEngineState,
+  splitCombinedEngineState,
+} from "./lib/multiDatasetState";
 import {buildFineTimeHistogram} from "./lib/timeHistogram";
 import {
   COLOR_PALETTES,
@@ -363,7 +367,8 @@ export function App() {
   const workspaceRef = useRef<HTMLElement>(null);
   const tabsRef = useRef<DatasetTab[]>([]);
   const activeTabIdRef = useRef<number | null>(null);
-  const combinedStateRef = useRef(new Map<number, EngineDatasetState>());
+  const datasetStateRef = useRef(new Map<number, EngineDatasetState>());
+  const combinedTimeRangeRef = useRef<[number, number]>([-Infinity, Infinity]);
   const pendingRef = useRef<PendingOperation | null>(null);
   const requestIdRef = useRef(0);
   const tabIdRef = useRef(0);
@@ -567,10 +572,20 @@ export function App() {
         clearDatasetUi();
         return;
       }
+      const orderedTabs = [tab, ...tabsRef.current.filter(
+        (candidate) => candidate.id !== tab.id && candidate.dataset && candidate.summary,
+      )];
       current.loadDataset(
         combined.dataset,
         combined.summary,
-        combinedStateRef.current.get(tab.id),
+        composeCombinedEngineState(
+          orderedTabs.map((source) => ({
+            id: source.id,
+            rowCount: source.summary?.rowCount ?? 0,
+          })),
+          datasetStateRef.current,
+          combinedTimeRangeRef.current,
+        ),
       );
       applyColorMode(tab);
       setRowCount(combined.activeRows);
@@ -643,11 +658,27 @@ export function App() {
     const current = engineRef.current;
     if (id == null || !current || current.count === 0) return;
     const state = current.captureState();
-    combinedStateRef.current.set(id, state);
+    combinedTimeRangeRef.current = [...state.timeRange];
+    const active = tabsRef.current.find((tab) => tab.id === id);
+    const orderedTabs = active
+      ? [active, ...tabsRef.current.filter(
+          (tab) => tab.id !== id && tab.dataset && tab.summary,
+        )]
+      : [];
+    const splitState = splitCombinedEngineState(
+      state,
+      orderedTabs.map((tab) => ({
+        id: tab.id,
+        rowCount: tab.summary?.rowCount ?? 0,
+      })),
+    );
+    for (const [tabId, tabState] of splitState) {
+      datasetStateRef.current.set(tabId, tabState);
+    }
     replaceTabs((existingTabs) =>
       existingTabs.map((tab) =>
         tab.id === id && tab.dataset
-          ? { ...tab, engineState: state }
+          ? {...tab, engineState: datasetStateRef.current.get(id)}
           : tab,
       ),
     );
@@ -1485,6 +1516,7 @@ export function App() {
   };
 
   const applyTimeRange = (start: number, end: number): void => {
+    combinedTimeRangeRef.current = [start, end];
     setTimeStart(start);
     setTimeEnd(end);
     const id = activeTabIdRef.current;
