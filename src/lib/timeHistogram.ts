@@ -6,6 +6,16 @@ export function buildFineTimeHistogram(
   maximum: number,
   maximumBins = 262_144,
 ): Uint32Array<ArrayBuffer> {
+  return buildMaskedTimeHistogram(values, undefined, minimum, maximum, maximumBins);
+}
+
+export function buildMaskedTimeHistogram(
+  values: Float64Array,
+  mask: Uint8Array | undefined,
+  minimum: number,
+  maximum: number,
+  maximumBins = 262_144,
+): Uint32Array<ArrayBuffer> {
   const targetBins = Math.min(
     maximumBins,
     Math.max(96, 2 ** Math.ceil(Math.log2(Math.max(1, values.length)))),
@@ -14,6 +24,7 @@ export function buildFineTimeHistogram(
   if (!Number.isFinite(minimum) || !Number.isFinite(maximum)) return counts;
   const span = Math.max(Number.EPSILON, maximum - minimum);
   for (let index = 0; index < values.length; index += 1) {
+    if (mask && !mask[index]) continue;
     const value = values[index];
     if (!Number.isFinite(value)) continue;
     const bin = Math.max(

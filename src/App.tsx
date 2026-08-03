@@ -53,7 +53,13 @@ import type {
 import { csvSchemaKey } from "./lib/csvSchema";
 import { extendEngineState } from "./lib/engineState";
 import {
+  composeCombinedEngineState,
+  splitCombinedEngineState,
+} from "./lib/multiDatasetState";
+import {buildFineTimeHistogram} from "./lib/timeHistogram";
+import {
   COLOR_PALETTES,
+  gradientColor,
   paletteCss,
   type ColorPalette,
 } from "./lib/colorPalettes";
@@ -62,6 +68,7 @@ import {
   type ColorValueMode,
 } from "./lib/colorValueModes";
 import type { FastPointEngine } from "./map/FastPointEngine";
+import {buildCompactSpatialIndex} from "./map/compactIndex";
 import {tableColumnValue} from "./workers/tableColumns";
 import {
   clearPersistedWorkspace,
@@ -157,6 +164,119 @@ type RecolorPending = {
 
 type PendingOperation = LoadPending | RecolorPending;
 
+function csvImportLog(event: string, details: Record<string, unknown>): void {
+  console.info(`[LeySight CSV] ${event}`, details);
+}
+
+function concatenate<T extends Float64Array | Float32Array | Uint32Array>(
+  arrays: T[],
+  Constructor: {new (length: number): T},
+): T {
+  const result = new Constructor(arrays.reduce((sum, array) => sum + array.length, 0));
+  let offset = 0;
+  for (const array of arrays) {
+    result.set(array, offset);
+    offset += array.length;
+  }
+  return result;
+}
+
+function displayColors(tab: DatasetTab): Uint32Array<ArrayBuffer> {
+  const dataset = tab.dataset!;
+  if (tab.colorField === UNIFORM_COLOR_FIELD) {
+    const colors = new Uint32Array(dataset.colors.length);
+    colors.fill(0x3288bdde);
+    return colors;
+  }
+  if (tab.colorField !== SYNTHETIC_TIME_FIELD) return dataset.colors;
+  const minimum = tab.summary?.timeMin ?? Number.NaN;
+  const maximum = tab.summary?.timeMax ?? Number.NaN;
+  const span = Math.max(1, maximum - minimum);
+  return Uint32Array.from(dataset.time, (value) =>
+    Number.isFinite(value) && Number.isFinite(minimum) && Number.isFinite(maximum)
+      ? gradientColor((value - minimum) / span, tab.colorPalette, 224)
+      : 0x64748bdd
+  ) as Uint32Array<ArrayBuffer>;
+}
+
+const combinedDatasetCache = new Map<number, {
+  sources: PackedDataset[];
+  value: {dataset: PackedDataset; summary: DatasetSummary; activeRows: number};
+}>();
+
+function combinedMapDataset(tabs: DatasetTab[], activeId: number): {
+  dataset: PackedDataset;
+  summary: DatasetSummary;
+  activeRows: number;
+} | null {
+  const active = tabs.find((tab) => tab.id === activeId && tab.dataset && tab.summary);
+  if (!active?.dataset || !active.summary) return null;
+  const sources = [active, ...tabs.filter(
+    (tab) => tab.id !== activeId && tab.dataset && tab.summary,
+  )];
+  const datasets = sources.map((tab) => tab.dataset!);
+  const summaries = sources.map((tab) => tab.summary!);
+  if (datasets.length === 1) {
+    return {
+      dataset: active.colorField === UNIFORM_COLOR_FIELD ||
+          active.colorField === SYNTHETIC_TIME_FIELD
+        ? {...active.dataset, colors: displayColors(active)}
+        : active.dataset,
+      summary: active.summary,
+      activeRows: active.summary.rowCount,
+    };
+  }
+  const cached = combinedDatasetCache.get(activeId);
+  if (
+    cached &&
+    cached.sources.length === datasets.length &&
+    cached.sources.every((dataset, index) => dataset === datasets[index])
+  ) {
+    return cached.value;
+  }
+  const x = concatenate(datasets.map((dataset) => dataset.x), Float64Array);
+  const y = concatenate(datasets.map((dataset) => dataset.y), Float64Array);
+  const times = concatenate(datasets.map((dataset) => dataset.time), Float64Array);
+  const finiteMinimums = summaries.map((summary) => summary.timeMin).filter(Number.isFinite);
+  const finiteMaximums = summaries.map((summary) => summary.timeMax).filter(Number.isFinite);
+  const timeMin = finiteMinimums.length ? Math.min(...finiteMinimums) : Number.NaN;
+  const timeMax = finiteMaximums.length ? Math.max(...finiteMaximums) : Number.NaN;
+  const extent: [number, number, number, number] = [
+    Math.min(...datasets.map((dataset) => dataset.extent[0])),
+    Math.min(...datasets.map((dataset) => dataset.extent[1])),
+    Math.max(...datasets.map((dataset) => dataset.extent[2])),
+    Math.max(...datasets.map((dataset) => dataset.extent[3])),
+  ];
+  const dataset: PackedDataset = {
+    x,
+    y,
+    semiMajor: concatenate(datasets.map((item) => item.semiMajor), Float32Array),
+    semiMinor: concatenate(datasets.map((item) => item.semiMinor), Float32Array),
+    rotation: concatenate(datasets.map((item) => item.rotation), Float32Array),
+    time: times,
+    colors: concatenate(sources.map(displayColors), Uint32Array),
+    extent,
+    index: buildCompactSpatialIndex(x, y),
+    timeHistogram: buildFineTimeHistogram(times, timeMin, timeMax),
+  };
+  const value = {
+    dataset,
+    activeRows: active.summary.rowCount,
+    summary: {
+      name: sources.length === 1 ? active.summary.name : `${sources.length} datasets`,
+      rowCount: x.length,
+      timeMin,
+      timeMax,
+      invalidRows: summaries.reduce((sum, item) => sum + item.invalidRows, 0),
+      invalidTimestamps: summaries.reduce((sum, item) => sum + (item.invalidTimestamps ?? 0), 0),
+      coordinateFailures: summaries.reduce((sum, item) => sum + (item.coordinateFailures ?? 0), 0),
+      projectionClampedRows: summaries.reduce((sum, item) => sum + (item.projectionClampedRows ?? 0), 0),
+    },
+  };
+  combinedDatasetCache.set(activeId, {sources: datasets, value});
+  return value;
+}
+
 function formatCompact(value: number): string {
   return Intl.NumberFormat(undefined, {
     notation: value >= 100_000 ? "compact" : "standard",
@@ -225,24 +345,6 @@ function appendableDataset(
   };
 }
 
-function appendTransferList(
-  base: AppendableDataset,
-  tableBase?: PackedTableData,
-): Transferable[] {
-  return [
-    base.x.buffer,
-    base.y.buffer,
-    base.semiMajor.buffer,
-    base.semiMinor.buffer,
-    base.rotation.buffer,
-    base.time.buffer,
-    base.colors.buffer,
-    ...(tableBase?.columns.map((column) =>
-      column.kind === "number" ? column.values.buffer : column.codes.buffer
-    ) ?? []),
-  ];
-}
-
 function workspaceManifest(
   tabs: readonly DatasetTab[],
   activeTabId: number | null,
@@ -287,6 +389,8 @@ export function App() {
   const workspaceRef = useRef<HTMLElement>(null);
   const tabsRef = useRef<DatasetTab[]>([]);
   const activeTabIdRef = useRef<number | null>(null);
+  const datasetStateRef = useRef(new Map<number, EngineDatasetState>());
+  const combinedTimeRangeRef = useRef<[number, number]>([-Infinity, Infinity]);
   const pendingRef = useRef<PendingOperation | null>(null);
   const requestIdRef = useRef(0);
   const tabIdRef = useRef(0);
@@ -392,8 +496,17 @@ export function App() {
     }
     const timeout = window.setTimeout(() => {
       setPersistenceState("saving");
-      void saveWorkspaceManifest(workspaceManifest(tabs, activeTabId))
-        .then(() => setPersistenceState("available"))
+      const manifest = workspaceManifest(tabs, activeTabId);
+      void saveWorkspaceManifest(manifest)
+        .then(() => {
+          csvImportLog("OPFS manifest saved", {
+            tabs: manifest.tabs.map((tab) => ({
+              schemaKey: tab.schemaKey,
+              files: tab.files.length,
+            })),
+          });
+          setPersistenceState("available");
+        })
         .catch((caught) => {
           setPersistenceState("error");
           setError(
@@ -459,14 +572,14 @@ export function App() {
   const applyColorMode = useCallback((tab: DatasetTab): void => {
     const current = engineRef.current;
     if (!current) return;
-    current.setColorPalette(tab.colorPalette);
-    if (tab.colorField === UNIFORM_COLOR_FIELD) {
-      current.setColorMode("uniform");
-    } else if (tab.colorField === SYNTHETIC_TIME_FIELD) {
-      current.setColorMode("time");
-    } else {
-      current.setColorMode("source");
-    }
+    const orderedTabs = [tab, ...tabsRef.current.filter(
+      (candidate) => candidate.id !== tab.id && candidate.dataset,
+    )];
+    const colors = concatenate(orderedTabs.map(displayColors), Uint32Array);
+    const cached = combinedDatasetCache.get(tab.id);
+    if (cached) cached.value.dataset.colors = colors;
+    current.setColors(colors);
+    current.setColorMode("source");
   }, []);
 
   const loadTabIntoEngine = useCallback(
@@ -476,46 +589,65 @@ export function App() {
         clearDatasetUi();
         return;
       }
-      current.loadDataset(tab.dataset, tab.summary, tab.engineState);
+      const combined = combinedMapDataset(tabsRef.current, tab.id);
+      if (!combined) {
+        clearDatasetUi();
+        return;
+      }
+      const orderedTabs = [tab, ...tabsRef.current.filter(
+        (candidate) => candidate.id !== tab.id && candidate.dataset && candidate.summary,
+      )];
+      current.loadDataset(
+        combined.dataset,
+        combined.summary,
+        composeCombinedEngineState(
+          orderedTabs.map((source) => ({
+            id: source.id,
+            rowCount: source.summary?.rowCount ?? 0,
+          })),
+          datasetStateRef.current,
+          combinedTimeRangeRef.current,
+        ),
+      );
       applyColorMode(tab);
-      setRowCount(tab.summary.rowCount);
-      setSummary(tab.summary);
-      setTimeHistogram(tab.dataset.timeHistogram);
+      setRowCount(combined.activeRows);
+      setSummary(combined.summary);
       setMetrics(EMPTY_METRICS);
       const hasTimes =
-        Number.isFinite(tab.summary.timeMin) &&
-        Number.isFinite(tab.summary.timeMax) &&
-        tab.summary.timeMax > tab.summary.timeMin;
+        Number.isFinite(combined.summary.timeMin) &&
+        Number.isFinite(combined.summary.timeMax) &&
+        combined.summary.timeMax > combined.summary.timeMin;
       if (hasTimes) {
-        setTimeMinimum(tab.summary.timeMin);
-        setTimeMaximum(tab.summary.timeMax);
-        const restoredRange =
-          tab.timeFilterRange ?? tab.engineState?.timeRange;
-        if (restoredRange) {
-          current.setTimeRange(restoredRange[0], restoredRange[1]);
-        }
+        setTimeMinimum(combined.summary.timeMin);
+        setTimeMaximum(combined.summary.timeMax);
+        const restoredRange = tab.timeFilterRange;
+        const effectiveRange = restoredRange ?? combinedTimeRangeRef.current;
+        combinedTimeRangeRef.current = [...effectiveRange];
+        current.setTimeRange(effectiveRange[0], effectiveRange[1]);
+        setTimeHistogram(current.manualTimeHistogram());
         setTimeStart(
-          restoredRange && Number.isFinite(restoredRange[0])
-            ? restoredRange[0]
-            : tab.summary.timeMin,
+          Number.isFinite(effectiveRange[0])
+            ? effectiveRange[0]
+            : combined.summary.timeMin,
         );
         setTimeEnd(
-          restoredRange && Number.isFinite(restoredRange[1])
-            ? restoredRange[1]
-            : tab.summary.timeMax,
+          Number.isFinite(effectiveRange[1])
+            ? effectiveRange[1]
+            : combined.summary.timeMax,
         );
         const restoredView = tab.timeViewRange;
         setTimeViewStart(
           restoredView && Number.isFinite(restoredView[0])
             ? restoredView[0]
-            : tab.summary.timeMin,
+            : combined.summary.timeMin,
         );
         setTimeViewEnd(
           restoredView && Number.isFinite(restoredView[1])
             ? restoredView[1]
-            : tab.summary.timeMax,
+            : combined.summary.timeMax,
         );
       } else {
+        setTimeHistogram(EMPTY_HISTOGRAM);
         setTimeMinimum(0);
         setTimeMaximum(1);
         setTimeStart(0);
@@ -524,10 +656,20 @@ export function App() {
         setTimeViewEnd(1);
       }
       setVisibleIndices(
-        current.visibleCount === tab.summary.rowCount
+        current.visibleCount === combined.summary.rowCount
           ? null
-          : current.visibleIndices(),
+          : current.visibleIndices().filter((index) => index < combined.activeRows),
       );
+      csvImportLog("dataset activated", {
+        tabId: tab.id,
+        schemaKey: tab.schemaKey,
+        files: tab.files.map((file) => file.name),
+        rows: combined.summary.rowCount,
+        datasetRows: combined.dataset.x.length,
+        tableRows: tab.tableData?.rowCount ?? 0,
+        visibleRows: current.visibleCount,
+        timeRange: current.captureState().timeRange,
+      });
       if (fit) current.fitToData();
     },
     [applyColorMode, clearDatasetUi],
@@ -537,10 +679,28 @@ export function App() {
     const id = activeTabIdRef.current;
     const current = engineRef.current;
     if (id == null || !current || current.count === 0) return;
+    const state = current.captureState();
+    combinedTimeRangeRef.current = [...state.timeRange];
+    const active = tabsRef.current.find((tab) => tab.id === id);
+    const orderedTabs = active
+      ? [active, ...tabsRef.current.filter(
+          (tab) => tab.id !== id && tab.dataset && tab.summary,
+        )]
+      : [];
+    const splitState = splitCombinedEngineState(
+      state,
+      orderedTabs.map((tab) => ({
+        id: tab.id,
+        rowCount: tab.summary?.rowCount ?? 0,
+      })),
+    );
+    for (const [tabId, tabState] of splitState) {
+      datasetStateRef.current.set(tabId, tabState);
+    }
     replaceTabs((existingTabs) =>
       existingTabs.map((tab) =>
         tab.id === id && tab.dataset
-          ? { ...tab, engineState: current.captureState() }
+          ? {...tab, engineState: datasetStateRef.current.get(id)}
           : tab,
       ),
     );
@@ -824,9 +984,10 @@ export function App() {
         colorField: chosenColor,
         colorPalette: chosenPalette,
         colorValueMode: chosenColorValueMode,
-        dataset: null,
-        tableData: null,
-        summary: null,
+        dataset: refreshedExisting?.dataset ?? null,
+        tableData: refreshedExisting?.tableData ?? null,
+        summary: refreshedExisting?.summary ?? null,
+        engineState: refreshedExisting?.engineState,
         timeFilterRange:
           refreshedExisting?.timeFilterRange ?? recovery?.timeFilterRange,
         timeViewRange: refreshedExisting?.timeViewRange ?? recovery?.timeViewRange,
@@ -849,9 +1010,14 @@ export function App() {
             ? chosenColor
             : undefined,
       };
-      activeTabIdRef.current = id;
-      setActiveTabId(id);
-      clearDatasetUi();
+      const keepCurrentTabActive = Boolean(
+        refreshedExisting && activeTabIdRef.current !== id,
+      );
+      if (!keepCurrentTabActive) {
+        activeTabIdRef.current = id;
+        setActiveTabId(id);
+        if (!refreshedExisting) clearDatasetUi();
+      }
       setError(null);
       setProgress({ phase: "parsing", completed: 0, total: 1 });
 
@@ -862,23 +1028,34 @@ export function App() {
           ? appendableDataset(previousDataset, previousSummary)
           : undefined;
       const tableBase = refreshedExisting?.tableData ?? undefined;
-      worker.postMessage(
-        {
-          type: "parse",
-          requestId,
-          files: group.files,
-          columns: loadingTab.mapping!,
-          tableColumns: loadingTab.columns,
-          colorField:
-            chosenColor === UNIFORM_COLOR_FIELD ? undefined : chosenColor,
-          colorPalette: chosenPalette,
-          colorValueMode: chosenColorValueMode,
-          base,
-          tableBase,
-          totalFileCount: allFiles.length,
-        },
-        base ? appendTransferList(base, tableBase) : [],
-      );
+      csvImportLog(refreshedExisting ? "append started" : "import started", {
+        requestId,
+        tabId: id,
+        schemaKey: group.schemaKey,
+        incomingFiles: group.files.map((file) => file.name),
+        priorFiles: refreshedExisting?.files.map((file) => file.name) ?? [],
+        priorRows: previousSummary?.rowCount ?? 0,
+        priorDatasetRows: base?.x.length ?? 0,
+        priorTableRows: tableBase?.rowCount ?? 0,
+        totalFiles: allFiles.length,
+        persistedFiles: allPersistedFiles.length,
+      });
+      // Let structured cloning copy append bases. Transferring these buffers
+      // would detach the active map and table while the worker parses new rows.
+      worker.postMessage({
+        type: "parse",
+        requestId,
+        files: group.files,
+        columns: loadingTab.mapping!,
+        tableColumns: loadingTab.columns,
+        colorField:
+          chosenColor === UNIFORM_COLOR_FIELD ? undefined : chosenColor,
+        colorPalette: chosenPalette,
+        colorValueMode: chosenColorValueMode,
+        base,
+        tableBase,
+        totalFileCount: allFiles.length,
+      });
     },
     [captureActiveState, clearDatasetUi, replaceTabs],
   );
@@ -913,6 +1090,18 @@ export function App() {
         tab.schemaKey === group.schemaKey &&
         tab.status === "ready",
     );
+    csvImportLog("queue advanced", {
+      schemaKey: group.schemaKey,
+      incomingFiles: group.files.map((file) => file.name),
+      matchedTabId: existing?.id ?? null,
+      matchedRows: existing?.summary?.rowCount ?? 0,
+      availableTabs: tabsRef.current.map((tab) => ({
+        id: tab.id,
+        schemaKey: tab.schemaKey,
+        status: tab.status,
+        rows: tab.summary?.rowCount ?? 0,
+      })),
+    });
     if (existing?.mapping) {
       startCsvImportRef.current(group, existing.mapping, existing);
     } else {
@@ -975,6 +1164,14 @@ export function App() {
         }
       }
       importQueueRef.current.push(...grouped.values());
+      csvImportLog("files queued", {
+        opfsSupported: canPersist,
+        groups: Array.from(grouped.values(), (group) => ({
+          schemaKey: group.schemaKey,
+          files: group.files.map((file) => file.name),
+          persistedFiles: group.persistedFiles.length,
+        })),
+      });
       advanceImportQueueRef.current();
     } catch (caught) {
       if (canPersist) setPersistenceState("error");
@@ -1198,6 +1395,15 @@ export function App() {
         (tab) => tab.id === pending.tabId,
       );
       if (currentTab) {
+        csvImportLog("worker complete", {
+          requestId: message.requestId,
+          tabId: currentTab.id,
+          schemaKey: currentTab.schemaKey,
+          receivedRows: message.summary.rowCount,
+          receivedTableRows: message.tableData?.rowCount ?? 0,
+          files: currentTab.files.map((file) => file.name),
+          persistedFiles: currentTab.persistedFiles.length,
+        });
         const readyTab: DatasetTab = {
           ...currentTab,
           dataset: message.dataset,
@@ -1266,7 +1472,16 @@ export function App() {
           ),
         );
         if (activeTabIdRef.current === updated.id) {
-          engineRef.current?.setColors(message.colors);
+          const orderedTabs = [updated, ...tabsRef.current.filter(
+            (candidate) => candidate.id !== updated.id && candidate.dataset,
+          )];
+          const combinedColors = concatenate(
+            orderedTabs.map(displayColors),
+            Uint32Array,
+          );
+          const cached = combinedDatasetCache.get(updated.id);
+          if (cached) cached.value.dataset.colors = combinedColors;
+          engineRef.current?.setColors(combinedColors);
           engineRef.current?.setColorMode("source");
         }
       } else {
@@ -1278,6 +1493,14 @@ export function App() {
       return;
     }
     if (message.type === "error") {
+      csvImportLog("worker error", {
+        requestId: message.requestId,
+        tabId: pending.tabId,
+        operation: pending.kind,
+        message: message.message,
+        recoveredDatasetRows: message.recoveredBase?.x.length ?? 0,
+        recoveredTableRows: message.recoveredTableBase?.rowCount ?? 0,
+      });
       if (pending.kind === "load") {
         if (pending.previousTab) {
           const restored = pending.previousTab;
@@ -1320,22 +1543,24 @@ export function App() {
   };
 
   const applyTimeRange = (start: number, end: number): void => {
+    combinedTimeRangeRef.current = [start, end];
     setTimeStart(start);
     setTimeEnd(end);
     const id = activeTabIdRef.current;
     if (id != null) {
       replaceTabs((current) =>
         current.map((tab) =>
-          tab.id === id ? { ...tab, timeFilterRange: [start, end] } : tab,
+          tab.kind === "csv" ? {...tab, timeFilterRange: [start, end]} : tab,
         ),
       );
     }
     if (!engineRef.current) return;
     engineRef.current.setTimeRange(start, end);
+    const activeRows = activeTab?.summary?.rowCount ?? rowCount;
     setVisibleIndices(
-      engineRef.current.visibleCount === rowCount
+      engineRef.current.visibleCount === engineRef.current.count
         ? null
-        : engineRef.current.visibleIndices(),
+        : engineRef.current.visibleIndices().filter((index) => index < activeRows),
     );
   };
 
@@ -1346,7 +1571,7 @@ export function App() {
     if (id == null) return;
     replaceTabs((current) =>
       current.map((tab) =>
-        tab.id === id ? { ...tab, timeViewRange: [start, end] } : tab,
+        tab.kind === "csv" ? {...tab, timeViewRange: [start, end]} : tab,
       ),
     );
   };
@@ -1374,6 +1599,7 @@ export function App() {
     const mapping = activeTab.mapping;
     const lines = [exportColumns.map(csvCell).join(",")];
     for (const index of engineRef.current.selectedIndices()) {
+      if (activeTab.summary && index >= activeTab.summary.rowCount) continue;
       const row = engineRef.current.row(index);
       const mappedValue = (column: string): string | number => {
         if (activeTab.kind === "synthetic") {
@@ -1437,20 +1663,25 @@ export function App() {
     const current = engineRef.current;
     if (!current) return;
     action(current);
+    setTimeHistogram(current.manualTimeHistogram());
+    const activeRows = tabsRef.current.find(
+      (tab) => tab.id === activeTabIdRef.current,
+    )?.summary?.rowCount ?? rowCount;
     setVisibleIndices(
-      current.visibleCount === rowCount ? null : current.visibleIndices(),
+      current.visibleCount === current.count
+        ? null
+        : current.visibleIndices().filter((index) => index < activeRows),
     );
   };
 
   const showAllRows = (): void => {
     updateVisibility((current) => current.showAll());
+    combinedTimeRangeRef.current = [-Infinity, Infinity];
     setTimeStart(timeMinimum);
     setTimeEnd(timeMaximum);
-    const id = activeTabIdRef.current;
-    if (id == null) return;
     replaceTabs((current) =>
       current.map((tab) => {
-        if (tab.id !== id) return tab;
+        if (tab.kind !== "csv") return tab;
         const {timeFilterRange: _discarded, ...withoutTimeFilter} = tab;
         return withoutTimeFilter;
       }),
@@ -1951,27 +2182,6 @@ export function App() {
         )}
       </div>
 
-      <nav className="dataset-tabs" aria-label="Dataset tables">
-        {tabs.length ? (
-          tabs.map((tab) => (
-            <button
-              key={tab.id}
-              className={tab.id === activeTabId ? "is-active" : ""}
-              onClick={() => activateTab(tab.id)}
-            >
-              <span>{tab.title}</span>
-              <small>
-                {tab.status === "loading"
-                  ? "loading"
-                  : formatCompact(tab.summary?.rowCount ?? 0)}
-              </small>
-            </button>
-          ))
-        ) : (
-          <span className="empty-tabs">No datasets loaded</span>
-        )}
-      </nav>
-
       <main
         className="workspace"
         ref={workspaceRef}
@@ -2040,8 +2250,8 @@ export function App() {
         )}
 
         {showTimeline && (
+          // Keep one time control mounted while its active dataset changes.
           <HistogramRange
-            key={activeTabId ?? "empty-time"}
             bins={timeHistogram}
             minimum={timeMinimum}
             maximum={timeMaximum}
@@ -2085,21 +2295,51 @@ export function App() {
         )}
 
         {showTable && (
-          <VirtualDataTable
-            key={activeTabId ?? "empty"}
-            engine={engine}
-            rowCount={rowCount}
-            columns={activeTab?.columns ?? []}
-            mapping={activeTab?.mapping}
-            tableData={activeTab?.tableData ?? null}
-            visibleIndices={visibleIndices}
-            selectionRevision={selection.revision}
-            onCollapse={() => setShowTable(false)}
-            onSelectRow={(index, toggle) => {
-              if (toggle) engineRef.current?.toggleIndex(index);
-              else engineRef.current?.selectIndices([index], true);
-            }}
-          />
+          <div className="table-workspace">
+            <nav className="dataset-tabs" role="tablist" aria-label="CSV data tables">
+              <span className="dataset-tabs-label" aria-hidden="true">TABLES</span>
+              {tabs.map((tab, index) => (
+                <button
+                  key={tab.id}
+                  id={`dataset-tab-${tab.id}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab.id === activeTabId}
+                  aria-controls={`dataset-table-panel-${tab.id}`}
+                  aria-label={`Table ${index + 1}: ${tab.title}`}
+                  className={tab.id === activeTabId ? "is-active" : ""}
+                  onClick={() => activateTab(tab.id)}
+                >
+                  <span>
+                    <strong>TABLE {index + 1}</strong>
+                    {tab.title}
+                  </span>
+                  <small>
+                    {tab.status === "loading"
+                      ? "loading"
+                      : formatCompact(tab.summary?.rowCount ?? 0)}
+                  </small>
+                </button>
+              ))}
+            </nav>
+            <VirtualDataTable
+              key={activeTabId ?? "empty"}
+              panelId={activeTab ? `dataset-table-panel-${activeTab.id}` : undefined}
+              labelledBy={activeTab ? `dataset-tab-${activeTab.id}` : undefined}
+              engine={engine}
+              rowCount={rowCount}
+              columns={activeTab?.columns ?? []}
+              mapping={activeTab?.mapping}
+              tableData={activeTab?.tableData ?? null}
+              visibleIndices={visibleIndices}
+              selectionRevision={selection.revision}
+              onCollapse={() => setShowTable(false)}
+              onSelectRow={(index, toggle) => {
+                if (toggle) engineRef.current?.toggleIndex(index);
+                else engineRef.current?.selectIndices([index], true);
+              }}
+            />
+          </div>
         )}
         {!showTable && (
           <button

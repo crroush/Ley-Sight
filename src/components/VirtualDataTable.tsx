@@ -28,6 +28,8 @@ type SortState = {
 };
 
 type VirtualDataTableProps = {
+  panelId?: string;
+  labelledBy?: string;
   engine: FastPointEngine | null;
   rowCount: number;
   columns: string[];
@@ -106,6 +108,7 @@ function numericSortSource(
   column: string,
   mapping: CsvColumnMapping | undefined,
   engine: FastPointEngine,
+  rowCount: number,
 ): {
   values: Float64Array<ArrayBuffer> | Float32Array<ArrayBuffer>;
   invert: boolean;
@@ -113,38 +116,38 @@ function numericSortSource(
   const snapshot = engine.snapshot;
   if (column === mapping?.latitude) {
     return {
-      values: snapshot.y.slice() as Float64Array<ArrayBuffer>,
+      values: snapshot.y.slice(0, rowCount) as Float64Array<ArrayBuffer>,
       invert: false,
     };
   }
   if (column === mapping?.longitude) {
     return {
-      values: snapshot.x.slice() as Float64Array<ArrayBuffer>,
+      values: snapshot.x.slice(0, rowCount) as Float64Array<ArrayBuffer>,
       invert: false,
     };
   }
   if (column === mapping?.time) {
     return {
-      values: snapshot.time.slice() as Float64Array<ArrayBuffer>,
+      values: snapshot.time.slice(0, rowCount) as Float64Array<ArrayBuffer>,
       invert: false,
     };
   }
   if (column === mapping?.semiMajor) {
     return {
-      values: snapshot.sma.slice() as Float32Array<ArrayBuffer>,
+      values: snapshot.sma.slice(0, rowCount) as Float32Array<ArrayBuffer>,
       invert: false,
     };
   }
   if (column === mapping?.semiMinor) {
     return {
-      values: snapshot.smi.slice() as Float32Array<ArrayBuffer>,
+      values: snapshot.smi.slice(0, rowCount) as Float32Array<ArrayBuffer>,
       invert: false,
     };
   }
   if (column === mapping?.tilt) {
     // Engine rotation is 90° - CSV tilt, so its ordering is reversed.
     return {
-      values: snapshot.tilt.slice() as Float32Array<ArrayBuffer>,
+      values: snapshot.tilt.slice(0, rowCount) as Float32Array<ArrayBuffer>,
       invert: true,
     };
   }
@@ -152,6 +155,8 @@ function numericSortSource(
 }
 
 export function VirtualDataTable({
+  panelId,
+  labelledBy,
   engine,
   rowCount,
   columns,
@@ -334,7 +339,7 @@ export function VirtualDataTable({
       return;
     }
 
-    const numeric = numericSortSource(column.key, mapping, engine);
+    const numeric = numericSortSource(column.key, mapping, engine, rowCount);
     if (numeric) {
       transfer.push(numeric.values.buffer);
       worker.postMessage({
@@ -382,6 +387,9 @@ export function VirtualDataTable({
 
   return (
     <section
+      id={panelId}
+      role="tabpanel"
+      aria-labelledby={labelledBy}
       className="table-panel"
       data-selection-revision={selectionRevision}
     >

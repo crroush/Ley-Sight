@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  buildMaskedTimeHistogram,
   aggregateTimeHistogram,
   buildFineTimeHistogram,
   clampTimeRange,
@@ -17,6 +18,20 @@ describe("time histogram controls", () => {
       bins.reduce((total, count) => total + count, 0),
       3,
     );
+    assert.equal(bins[bins.length - 1], 1);
+  });
+
+  it("excludes manually hidden rows from histogram counts", () => {
+    const values = Float64Array.from([0, 0.5, 1]);
+    const bins = buildMaskedTimeHistogram(
+      values,
+      Uint8Array.from([1, 0, 1]),
+      0,
+      1,
+      128,
+    );
+    assert.equal(bins.reduce((total, count) => total + count, 0), 2);
+    assert.equal(bins[0], 1);
     assert.equal(bins[bins.length - 1], 1);
   });
 

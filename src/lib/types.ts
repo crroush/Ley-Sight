@@ -40,6 +40,7 @@ export type PackedTableData = {
 
 export type EngineDatasetState = {
   visible: Uint8Array<ArrayBuffer>;
+  manualVisible?: Uint8Array<ArrayBuffer>;
   deleted: Uint8Array<ArrayBuffer>;
   selected: Uint8Array<ArrayBuffer>;
   timeRange: [number, number];

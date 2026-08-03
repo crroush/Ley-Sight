@@ -31,6 +31,7 @@ import {
   gradientColor,
   type ColorPalette,
 } from "../lib/colorPalettes";
+import {buildMaskedTimeHistogram} from "../lib/timeHistogram";
 import {
   renderQueryExtents,
   wrapXForExtent,
@@ -143,6 +144,7 @@ export class FastPointEngine {
   private timestamps = new Float64Array();
   private colors = new Uint32Array();
   private visible = new Uint8Array();
+  private manualVisible = new Uint8Array();
   private deleted = new Uint8Array();
   private selected = new Uint8Array();
   private spatial = EMPTY_INDEX;
@@ -311,6 +313,9 @@ export class FastPointEngine {
       ? restored.visible
       : new Uint8Array(this.count);
     if (!restored) this.visible.fill(1);
+    this.manualVisible = restored?.manualVisible
+      ?? (restored ? restored.visible.slice() : new Uint8Array(this.count));
+    if (!restored) this.manualVisible.fill(1);
     this.deleted = restored
       ? restored.deleted
       : new Uint8Array(this.count);
@@ -353,10 +358,20 @@ export class FastPointEngine {
   captureState(): EngineDatasetState {
     return {
       visible: this.visible,
+      manualVisible: this.manualVisible,
       deleted: this.deleted,
       selected: this.selected,
       timeRange: [...this.timeRange],
     };
+  }
+
+  manualTimeHistogram(): Uint32Array<ArrayBuffer> {
+    return buildMaskedTimeHistogram(
+      this.timestamps,
+      this.manualVisible,
+      this.timeMinimum,
+      this.timeMaximum,
+    );
   }
 
   setColors(colors: Uint32Array<ArrayBuffer>): void {
@@ -379,6 +394,7 @@ export class FastPointEngine {
     this.timestamps = new Float64Array();
     this.colors = new Uint32Array();
     this.visible = new Uint8Array();
+    this.manualVisible = new Uint8Array();
     this.deleted = new Uint8Array();
     this.selected = new Uint8Array();
     this.spatial = EMPTY_INDEX;
@@ -431,7 +447,8 @@ export class FastPointEngine {
         `Visibility mask has ${mask.length.toLocaleString()} rows; expected ${this.count.toLocaleString()}.`,
       );
     }
-    this.visible.set(mask);
+    this.manualVisible.set(mask);
+    this.applyVisibilityFilters();
     let selectionChanged = false;
     for (let index = 0; index < this.count; index += 1) {
       if (this.visible[index] || !this.selected[index]) continue;
@@ -450,13 +467,10 @@ export class FastPointEngine {
 
   setTimeRange(start: number, end: number): number {
     this.timeRange = [start, end];
+    this.applyVisibilityFilters();
     let selectionChanged = false;
     for (let index = 0; index < this.count; index += 1) {
-      const timestamp = this.timestamps[index];
-      const isVisible =
-        !Number.isFinite(timestamp) || (timestamp >= start && timestamp <= end);
-      this.visible[index] = isVisible ? 1 : 0;
-      if (!isVisible && this.selected[index]) {
+      if (!this.visible[index] && this.selected[index]) {
         this.selected[index] = 0;
         selectionChanged = true;
       }
@@ -473,6 +487,7 @@ export class FastPointEngine {
 
   showAll(): void {
     this.timeRange = [-Infinity, Infinity];
+    this.manualVisible.fill(1);
     this.visible.fill(1);
     if (this.hasDeleted) {
       this.rebuildVisibility();
@@ -497,6 +512,7 @@ export class FastPointEngine {
   hideSelection(): void {
     for (let index = 0; index < this.count; index += 1) {
       if (!this.selected[index]) continue;
+      this.manualVisible[index] = 0;
       this.visible[index] = 0;
       this.selected[index] = 0;
     }
@@ -507,12 +523,13 @@ export class FastPointEngine {
   }
 
   showOnlySelection(): void {
-    this.visible.fill(0);
+    this.manualVisible.fill(0);
     for (let index = 0; index < this.count; index += 1) {
       if (this.selected[index] && !this.deleted[index]) {
-        this.visible[index] = 1;
+        this.manualVisible[index] = 1;
       }
     }
+    this.applyVisibilityFilters();
     this.rebuildVisibility();
     this.invalidate();
   }
@@ -521,6 +538,7 @@ export class FastPointEngine {
     for (let index = 0; index < this.count; index += 1) {
       if (!this.selected[index]) continue;
       this.deleted[index] = 1;
+      this.manualVisible[index] = 0;
       this.visible[index] = 0;
       this.selected[index] = 0;
     }
@@ -771,6 +789,16 @@ export class FastPointEngine {
   *selectedIndices(): Generator<number> {
     for (let index = 0; index < this.count; index += 1) {
       if (this.selected[index]) yield index;
+    }
+  }
+
+  private applyVisibilityFilters(): void {
+    const [start, end] = this.timeRange;
+    for (let index = 0; index < this.count; index += 1) {
+      const timestamp = this.timestamps[index];
+      const inTimeRange =
+        !Number.isFinite(timestamp) || (timestamp >= start && timestamp <= end);
+      this.visible[index] = this.manualVisible[index] && inTimeRange ? 1 : 0;
     }
   }
 

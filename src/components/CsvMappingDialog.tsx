@@ -4,6 +4,7 @@ import { inferCsvColumnMapping } from "../lib/csvColumnInference";
 import type {CsvDetectionRules} from "../config/appConfig";
 import type { CsvColumnMapping, TimestampInterpretation } from "../lib/types";
 import {formatTimestampPreview, parseTimestamp} from "../lib/timestamps";
+import {ModalDialog} from "./ModalDialog";
 
 type CsvMappingDialogProps = {
   files: File[];
@@ -26,6 +27,9 @@ export function CsvMappingDialog({
   );
   const [mapping, setMapping] = useState(defaults);
   const [timestampSamples, setTimestampSamples] = useState<string[]>([]);
+  useEffect(() => {
+    setMapping(defaults);
+  }, [defaults]);
   type ColumnKey = Exclude<keyof CsvColumnMapping, "timestampInterpretation">;
   const fields: Array<[ColumnKey, string, boolean]> = [
     ["latitude", "Latitude column", true],
@@ -54,9 +58,20 @@ export function CsvMappingDialog({
     return () => { active = false; };
   }, [files, mapping.time]);
   const timestampInterpretation = mapping.timestampInterpretation ?? "automatic";
+  const duplicateCoordinates = Boolean(
+    mapping.latitude && mapping.latitude === mapping.longitude,
+  );
+  const coordinateErrorId = duplicateCoordinates
+    ? "csv-coordinate-mapping-error"
+    : undefined;
+  const mappingInvalid = !mapping.latitude || !mapping.longitude || duplicateCoordinates;
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="csv-dialog-title">
+    <ModalDialog
+      titleId="csv-dialog-title"
+      descriptionId="csv-dialog-description"
+      onDismiss={onCancel}
+      initialFocus="[data-initial-focus]"
+    >
         <div className="dialog-header">
           <div>
             <span className="eyebrow">LOCAL DATA</span>
@@ -102,6 +117,9 @@ export function CsvMappingDialog({
             <label key={key}>
               <span>{label}</span>
               <select
+                data-initial-focus={key === "latitude" ? "true" : undefined}
+                aria-invalid={duplicateCoordinates && (key === "latitude" || key === "longitude") || undefined}
+                aria-describedby={key === "latitude" || key === "longitude" ? coordinateErrorId : undefined}
                 value={mapping[key] ?? ""}
                 onChange={(event) =>
                   setMapping((current) => ({
@@ -124,7 +142,12 @@ export function CsvMappingDialog({
             </label>
           ))}
         </div>
-        <div className="dialog-note">
+        {duplicateCoordinates && (
+          <p className="dialog-error" id="csv-coordinate-mapping-error" role="alert">
+            Latitude and longitude must use different columns.
+          </p>
+        )}
+        <div className="dialog-note" id="csv-dialog-description">
           Files stay in this browser session. Date/time words and common
           coordinate names are detected automatically; every mapping remains
           editable before loading. Longitude must be between −180° and 180°
@@ -137,13 +160,12 @@ export function CsvMappingDialog({
           <button className="button secondary" onClick={onCancel}>Cancel</button>
           <button
             className="button primary"
-            disabled={!mapping.latitude || !mapping.longitude}
+            disabled={mappingInvalid}
             onClick={() => onConfirm(mapping)}
           >
             Load data
           </button>
         </div>
-      </div>
-    </div>
+    </ModalDialog>
   );
 }

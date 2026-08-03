@@ -44,7 +44,7 @@ button {
   --cyan: #38bdf8;
   --danger: #f87171;
   display: grid;
-  grid-template-rows: 44px 49px auto 34px minmax(0, 1fr) 26px;
+  grid-template-rows: 44px 49px auto minmax(0, 1fr) 26px;
   height: 100%;
   color: var(--text);
   background: var(--bg);
@@ -471,11 +471,26 @@ button {
   overflow-x: auto;
 }
 
+.table-workspace {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.dataset-tabs-label {
+  align-self: center;
+  padding: 0 7px 3px 2px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
 .dataset-tabs button {
   display: flex;
   min-width: 120px;
   max-width: 240px;
-  height: 30px;
+  height: 38px;
   align-items: center;
   justify-content: space-between;
   border: 1px solid transparent;
@@ -498,12 +513,21 @@ button {
   border-color: var(--line);
   color: var(--text);
   background: var(--panel-2);
+  box-shadow: inset 0 2px var(--cyan);
 }
 
 .dataset-tabs button span {
+  display: grid;
+  gap: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dataset-tabs button span strong {
+  color: var(--cyan);
+  font-size: 7px;
+  letter-spacing: 0.1em;
 }
 
 .dataset-tabs button small {
@@ -1479,6 +1503,17 @@ button {
   color: #8fe3ce;
   background: #0c2b29;
   font-size: 10px;
+}
+
+.dialog-error {
+  margin: -7px 20px 14px;
+  color: #ff9b9b;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.form-grid select[aria-invalid="true"] {
+  border-color: #db5a5a;
 }
 
 .timestamp-preview {
