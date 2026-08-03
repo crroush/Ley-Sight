@@ -31,6 +31,7 @@ import {
   gradientColor,
   type ColorPalette,
 } from "../lib/colorPalettes";
+import {buildMaskedTimeHistogram} from "../lib/timeHistogram";
 import {
   renderQueryExtents,
   wrapXForExtent,
@@ -362,6 +363,15 @@ export class FastPointEngine {
       selected: this.selected,
       timeRange: [...this.timeRange],
     };
+  }
+
+  manualTimeHistogram(): Uint32Array<ArrayBuffer> {
+    return buildMaskedTimeHistogram(
+      this.timestamps,
+      this.manualVisible,
+      this.timeMinimum,
+      this.timeMaximum,
+    );
   }
 
   setColors(colors: Uint32Array<ArrayBuffer>): void {

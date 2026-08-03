@@ -612,7 +612,6 @@ export function App() {
       applyColorMode(tab);
       setRowCount(combined.activeRows);
       setSummary(combined.summary);
-      setTimeHistogram(combined.dataset.timeHistogram);
       setMetrics(EMPTY_METRICS);
       const hasTimes =
         Number.isFinite(combined.summary.timeMin) &&
@@ -626,6 +625,7 @@ export function App() {
         const effectiveRange = restoredRange ?? combinedTimeRangeRef.current;
         combinedTimeRangeRef.current = [...effectiveRange];
         current.setTimeRange(effectiveRange[0], effectiveRange[1]);
+        setTimeHistogram(current.manualTimeHistogram());
         setTimeStart(
           Number.isFinite(effectiveRange[0])
             ? effectiveRange[0]
@@ -648,6 +648,7 @@ export function App() {
             : combined.summary.timeMax,
         );
       } else {
+        setTimeHistogram(EMPTY_HISTOGRAM);
         setTimeMinimum(0);
         setTimeMaximum(1);
         setTimeStart(0);
@@ -1658,6 +1659,7 @@ export function App() {
     const current = engineRef.current;
     if (!current) return;
     action(current);
+    setTimeHistogram(current.manualTimeHistogram());
     const activeRows = tabsRef.current.find(
       (tab) => tab.id === activeTabIdRef.current,
     )?.summary?.rowCount ?? rowCount;
