@@ -12,5 +12,8 @@ export function extendEngineState(
   deleted.set(state.deleted);
   const selected = new Uint8Array(rowCount);
   selected.set(state.selected);
-  return { visible, deleted, selected, timeRange: [...state.timeRange] };
+  const manualVisible = new Uint8Array(rowCount);
+  manualVisible.fill(1);
+  manualVisible.set(state.manualVisible ?? state.visible);
+  return {visible, manualVisible, deleted, selected, timeRange: [...state.timeRange]};
 }

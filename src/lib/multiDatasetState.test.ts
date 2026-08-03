@@ -5,6 +5,7 @@ import {composeCombinedEngineState, splitCombinedEngineState} from "./multiDatas
 test("dataset masks survive reordering when the active table changes", () => {
   const state = {
     visible: Uint8Array.from([1, 0, 1, 1, 0]),
+    manualVisible: Uint8Array.from([1, 0, 1, 1, 0]),
     deleted: Uint8Array.from([0, 0, 1, 0, 0]),
     selected: Uint8Array.from([0, 1, 0, 1, 0]),
     timeRange: [10, 20] as [number, number],
@@ -19,6 +20,7 @@ test("dataset masks survive reordering when the active table changes", () => {
   ], split, state.timeRange);
 
   assert.deepEqual(Array.from(reordered.visible), [1, 1, 0, 1, 0]);
+  assert.deepEqual(Array.from(reordered.manualVisible ?? []), [1, 1, 0, 1, 0]);
   assert.deepEqual(Array.from(reordered.deleted), [1, 0, 0, 0, 0]);
   assert.deepEqual(Array.from(reordered.selected), [0, 1, 0, 0, 1]);
   assert.deepEqual(reordered.timeRange, [10, 20]);
