@@ -34,6 +34,7 @@ import { CsvMappingDialog } from "./components/CsvMappingDialog";
 import { HistogramRange } from "./components/HistogramRange";
 import { LayerManagerDialog } from "./components/LayerManagerDialog";
 import { MapPanel } from "./components/MapPanel";
+import { ModalDialog } from "./components/ModalDialog";
 import { PaneSeparator } from "./components/PaneSeparator";
 import { VirtualDataTable } from "./components/VirtualDataTable";
 import type {
@@ -440,6 +441,8 @@ export function App() {
   const [appConfig, setAppConfig] = useState<AppConfig>(DEFAULT_APP_CONFIG);
   const [persistenceState, setPersistenceState] =
     useState<PersistenceState>("checking");
+  const [savedWorkspace, setSavedWorkspace] =
+    useState<PersistedWorkspace | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showTimeline, setShowTimeline] = useState(() =>
     booleanPreference("leysight.csv.showTimeline", true),
@@ -717,6 +720,50 @@ export function App() {
     [captureActiveState, loadTabIntoEngine],
   );
 
+  const startFreshSession = useCallback((): void => {
+    setSavedWorkspace(null);
+    recoveryInitializedRef.current = true;
+    recoveryActiveRef.current = false;
+    setPersistenceState("available");
+    advanceImportQueueRef.current();
+  }, []);
+
+  const restoreSavedWorkspace = useCallback(async (): Promise<void> => {
+    if (!savedWorkspace) return;
+    setSavedWorkspace(null);
+    setPersistenceState("restoring");
+    try {
+      recoveredActiveStorageIdRef.current = savedWorkspace.activeStorageId;
+      for (const tab of savedWorkspace.tabs) {
+        const files: File[] = [];
+        for (const storedFile of tab.files) {
+          files.push(await materializeCsvFile(storedFile));
+        }
+        recoveryQueueRef.current.push({
+          tab,
+          group: {
+            schemaKey: tab.schemaKey,
+            columns: tab.columns,
+            files,
+            persistedFiles: tab.files,
+          },
+        });
+      }
+      recoveryInitializedRef.current = true;
+      advanceImportQueueRef.current();
+    } catch (caught) {
+      recoveryInitializedRef.current = true;
+      recoveryActiveRef.current = false;
+      setPersistenceState("error");
+      setError(
+        `Saved workspace recovery failed: ${
+          caught instanceof Error ? caught.message : String(caught)
+        }`,
+      );
+      advanceImportQueueRef.current();
+    }
+  }, [savedWorkspace]);
+
   useEffect(() => {
     // Strict Mode intentionally mounts, cleans up, and remounts effects in
     // development. Ignore asynchronous work from the disposed generation so
@@ -751,26 +798,8 @@ export function App() {
           advanceImportQueueRef.current();
           return;
         }
-        setPersistenceState("restoring");
-        recoveredActiveStorageIdRef.current = workspace.activeStorageId;
-        for (const tab of workspace.tabs) {
-          const files: File[] = [];
-          for (const storedFile of tab.files) {
-            files.push(await materializeCsvFile(storedFile));
-            if (cancelled) return;
-          }
-          recoveryQueueRef.current.push({
-            tab,
-            group: {
-              schemaKey: tab.schemaKey,
-              columns: tab.columns,
-              files,
-              persistedFiles: tab.files,
-            },
-          });
-        }
-        recoveryInitializedRef.current = true;
-        advanceImportQueueRef.current();
+        setSavedWorkspace(workspace);
+        setPersistenceState("available");
       } catch (caught) {
         if (cancelled) return;
         recoveryInitializedRef.current = true;
@@ -2384,6 +2413,49 @@ export function App() {
           }}
           onConfirm={loadMappedCsv}
         />
+      )}
+      {savedWorkspace && (
+        <ModalDialog
+          titleId="workspace-recovery-title"
+          descriptionId="workspace-recovery-description"
+          closeOnEscape={false}
+          initialFocus="[data-workspace-fresh]"
+        >
+          <div className="dialog-header">
+            <div>
+              <h2 id="workspace-recovery-title">Restore saved workspace?</h2>
+              <p>Saved data was found in this browser.</p>
+            </div>
+          </div>
+          <div className="workspace-recovery-copy" id="workspace-recovery-description">
+            <p>
+              LeySight found {savedWorkspace.tabs.length.toLocaleString()} saved
+              {savedWorkspace.tabs.length === 1 ? " dataset" : " datasets"} in
+              persistent storage. Restore them in this tab, or start a separate
+              empty session.
+            </p>
+            <p>
+              Starting fresh does not delete the saved workspace. It remains
+              available for recovery until this session saves new data or you
+              explicitly clear it.
+            </p>
+          </div>
+          <div className="dialog-actions">
+            <button
+              className="button secondary"
+              data-workspace-fresh
+              onClick={startFreshSession}
+            >
+              Start fresh
+            </button>
+            <button
+              className="button primary"
+              onClick={() => void restoreSavedWorkspace()}
+            >
+              Restore workspace
+            </button>
+          </div>
+        </ModalDialog>
       )}
       {showSettings && (
         <LayerManagerDialog
