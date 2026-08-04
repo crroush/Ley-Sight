@@ -6,7 +6,6 @@ import type {ColorValueMode} from "../lib/colorValueModes";
 
 const STORAGE_DIRECTORY = "leysight";
 const FILES_DIRECTORY = "csv";
-const MANIFEST_FILE = "workspace-v1.json";
 const SESSION_MANIFEST_PREFIX = "workspace-v1-";
 const MANIFEST_VERSION = 1;
 
@@ -76,7 +75,7 @@ async function csvDirectory(
 function storageFileId(): string {
   return typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    : `${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(16)}`;
 }
 
 /**
@@ -124,12 +123,10 @@ export async function materializeCsvFile(
 
 export async function saveWorkspaceManifest(
   workspace: PersistedWorkspace,
-  sessionId?: string,
+  sessionId: string,
 ): Promise<void> {
   const directory = await appDirectory();
-  const fileName = sessionId
-    ? `${SESSION_MANIFEST_PREFIX}${sessionId}.json`
-    : MANIFEST_FILE;
+  const fileName = `${SESSION_MANIFEST_PREFIX}${sessionId}.json`;
   const handle = await directory.getFileHandle(fileName, {create: true});
   const writable = await handle.createWritable();
   await writable.write(JSON.stringify(workspace));
@@ -137,7 +134,6 @@ export async function saveWorkspaceManifest(
 }
 
 function sessionIdFromManifestName(name: string): string | null {
-  if (name === MANIFEST_FILE) return "legacy";
   if (!name.startsWith(SESSION_MANIFEST_PREFIX) || !name.endsWith(".json")) {
     return null;
   }
@@ -161,9 +157,7 @@ export async function loadWorkspaceManifests(): Promise<PersistedWorkspaceRecord
         records.push({sessionId, savedAt: file.lastModified, workspace});
       }
     }
-    const sessionRecords = records.filter((record) => record.sessionId !== "legacy");
-    return (sessionRecords.length ? sessionRecords : records)
-      .sort((left, right) => right.savedAt - left.savedAt);
+    return records.sort((left, right) => right.savedAt - left.savedAt);
   } catch (error) {
     if (error instanceof DOMException && error.name === "NotFoundError") {
       return [];
@@ -235,21 +229,6 @@ export function parseWorkspaceManifest(value: unknown): PersistedWorkspace {
         : undefined,
     tabs: workspace.tabs,
   };
-}
-
-export async function loadWorkspaceManifest(): Promise<PersistedWorkspace | null> {
-  if (!opfsSupported()) return null;
-  try {
-    const directory = await appDirectory(false);
-    const handle = await directory.getFileHandle(MANIFEST_FILE);
-    const file = await handle.getFile();
-    return parseWorkspaceManifest(JSON.parse(await file.text()));
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "NotFoundError") {
-      return null;
-    }
-    throw error;
-  }
 }
 
 export async function requestPersistentStorage(): Promise<boolean> {

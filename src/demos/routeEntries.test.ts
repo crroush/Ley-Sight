@@ -68,6 +68,8 @@ test("CSV recovery asks before loading a saved workspace", () => {
   assert.match(app, /savedWorkspaces\.map/);
   assert.match(storage, /SESSION_MANIFEST_PREFIX/);
   assert.match(storage, /loadWorkspaceManifests/);
+  assert.doesNotMatch(storage, /MANIFEST_FILE|sessionId\?: string/);
+  assert.doesNotMatch(app, /Math\.random/);
   assert.doesNotMatch(app, /setPersistenceState\("restoring"\);\s*recoveredActiveStorageIdRef\.current = workspace/);
 });
 

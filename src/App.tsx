@@ -317,7 +317,7 @@ function tabTitle(file: File): string {
 function datasetStorageId(): string {
   return typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
-    : `dataset-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    : `dataset-${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(16)}`;
 }
 
 function browserSessionId(): string {
