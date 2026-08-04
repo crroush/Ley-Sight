@@ -1560,6 +1560,14 @@ button {
   color: var(--muted);
 }
 
+.workspace-recovery-session {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
 .settings-stack {
   display: grid;
   padding: 12px 20px;

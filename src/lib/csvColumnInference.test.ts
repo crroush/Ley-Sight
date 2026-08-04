@@ -46,4 +46,19 @@ describe("CSV column inference", () => {
     ]);
     assert.equal(mapping.time, undefined);
   });
+
+  it("maps tilt or orientation but never heading to ellipse tilt", () => {
+    assert.equal(
+      inferCsvColumnMapping(["latitude", "longitude", "heading"]).tilt,
+      undefined,
+    );
+    assert.equal(
+      inferCsvColumnMapping(["latitude", "longitude", "sensor_tilt_deg"]).tilt,
+      "sensor_tilt_deg",
+    );
+    assert.equal(
+      inferCsvColumnMapping(["latitude", "longitude", "ellipseOrientation"]).tilt,
+      "ellipseOrientation",
+    );
+  });
 });

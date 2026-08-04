@@ -19,7 +19,7 @@
       {"pattern": "^(smi|semiminor|semi[ _-]?minor)$", "flags": "i", "score": 1000}
     ],
     "tilt": [
-      {"pattern": "^(tilt|bearing|angle|azimuth|heading)$", "flags": "i", "score": 1000}
+      {"pattern": "(^|[^a-z0-9])(tilt|orientation)([^a-z0-9]|$)", "flags": "i", "score": 1000}
     ]
   },
   "baseLayers": [

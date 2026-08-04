@@ -61,9 +61,13 @@ test("CSV recovery persists both timeline ranges and cancels stale checks", () =
 
 test("CSV recovery asks before loading a saved workspace", () => {
   const app = source("App.tsx");
+  const storage = source("storage/opfsWorkspace.ts");
   assert.match(app, /Restore saved workspace\?/);
   assert.match(app, /Start fresh/);
-  assert.match(app, /setSavedWorkspace\(workspace\)/);
+  assert.match(app, /setSavedWorkspaces\(workspaces\)/);
+  assert.match(app, /savedWorkspaces\.map/);
+  assert.match(storage, /SESSION_MANIFEST_PREFIX/);
+  assert.match(storage, /loadWorkspaceManifests/);
   assert.doesNotMatch(app, /setPersistenceState\("restoring"\);\s*recoveredActiveStorageIdRef\.current = workspace/);
 });
 
