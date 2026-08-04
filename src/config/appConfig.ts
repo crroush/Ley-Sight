@@ -72,7 +72,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     ],
     tilt: [
       {
-        pattern: "^(tilt|bearing|angle|azimuth|heading)$",
+        pattern: "(^|[^a-z0-9])(tilt|orientation)([^a-z0-9]|$)",
         flags: "i",
         score: 1000,
       },

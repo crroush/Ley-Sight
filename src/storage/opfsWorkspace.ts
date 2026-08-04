@@ -6,7 +6,7 @@ import type {ColorValueMode} from "../lib/colorValueModes";
 
 const STORAGE_DIRECTORY = "leysight";
 const FILES_DIRECTORY = "csv";
-const MANIFEST_FILE = "workspace-v1.json";
+const SESSION_MANIFEST_PREFIX = "workspace-v1-";
 const MANIFEST_VERSION = 1;
 
 export type PersistedCsvFile = {
@@ -35,6 +35,12 @@ export type PersistedWorkspace = {
   version: 1;
   activeStorageId?: string;
   tabs: PersistedCsvTab[];
+};
+
+export type PersistedWorkspaceRecord = {
+  sessionId: string;
+  savedAt: number;
+  workspace: PersistedWorkspace;
 };
 
 function storageManager(): StorageManager | null {
@@ -69,7 +75,7 @@ async function csvDirectory(
 function storageFileId(): string {
   return typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    : `${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(16)}`;
 }
 
 /**
@@ -117,12 +123,47 @@ export async function materializeCsvFile(
 
 export async function saveWorkspaceManifest(
   workspace: PersistedWorkspace,
+  sessionId: string,
 ): Promise<void> {
   const directory = await appDirectory();
-  const handle = await directory.getFileHandle(MANIFEST_FILE, {create: true});
+  const fileName = `${SESSION_MANIFEST_PREFIX}${sessionId}.json`;
+  const handle = await directory.getFileHandle(fileName, {create: true});
   const writable = await handle.createWritable();
   await writable.write(JSON.stringify(workspace));
   await writable.close();
+}
+
+function sessionIdFromManifestName(name: string): string | null {
+  if (!name.startsWith(SESSION_MANIFEST_PREFIX) || !name.endsWith(".json")) {
+    return null;
+  }
+  return name.slice(SESSION_MANIFEST_PREFIX.length, -".json".length) || null;
+}
+
+export async function loadWorkspaceManifests(): Promise<PersistedWorkspaceRecord[]> {
+  if (!opfsSupported()) return [];
+  try {
+    const directory = await appDirectory(false);
+    const records: PersistedWorkspaceRecord[] = [];
+    const entries = directory as FileSystemDirectoryHandle & {
+      entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
+    };
+    for await (const [name, entry] of entries.entries()) {
+      const sessionId = sessionIdFromManifestName(name);
+      if (!sessionId || entry.kind !== "file") continue;
+      const file = await (entry as FileSystemFileHandle).getFile();
+      const workspace = parseWorkspaceManifest(JSON.parse(await file.text()));
+      if (workspace.tabs.length) {
+        records.push({sessionId, savedAt: file.lastModified, workspace});
+      }
+    }
+    return records.sort((left, right) => right.savedAt - left.savedAt);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "NotFoundError") {
+      return [];
+    }
+    throw error;
+  }
 }
 
 function isPersistedFile(value: unknown): value is PersistedCsvFile {
@@ -188,21 +229,6 @@ export function parseWorkspaceManifest(value: unknown): PersistedWorkspace {
         : undefined,
     tabs: workspace.tabs,
   };
-}
-
-export async function loadWorkspaceManifest(): Promise<PersistedWorkspace | null> {
-  if (!opfsSupported()) return null;
-  try {
-    const directory = await appDirectory(false);
-    const handle = await directory.getFileHandle(MANIFEST_FILE);
-    const file = await handle.getFile();
-    return parseWorkspaceManifest(JSON.parse(await file.text()));
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "NotFoundError") {
-      return null;
-    }
-    throw error;
-  }
 }
 
 export async function requestPersistentStorage(): Promise<boolean> {

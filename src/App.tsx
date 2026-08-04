@@ -34,6 +34,7 @@ import { CsvMappingDialog } from "./components/CsvMappingDialog";
 import { HistogramRange } from "./components/HistogramRange";
 import { LayerManagerDialog } from "./components/LayerManagerDialog";
 import { MapPanel } from "./components/MapPanel";
+import { ModalDialog } from "./components/ModalDialog";
 import { PaneSeparator } from "./components/PaneSeparator";
 import { VirtualDataTable } from "./components/VirtualDataTable";
 import type {
@@ -72,7 +73,7 @@ import {buildCompactSpatialIndex} from "./map/compactIndex";
 import {tableColumnValue} from "./workers/tableColumns";
 import {
   clearPersistedWorkspace,
-  loadWorkspaceManifest,
+  loadWorkspaceManifests,
   materializeCsvFile,
   opfsSupported,
   persistCsvFile,
@@ -81,6 +82,7 @@ import {
   type PersistedCsvFile,
   type PersistedCsvTab,
   type PersistedWorkspace,
+  type PersistedWorkspaceRecord,
 } from "./storage/opfsWorkspace";
 
 const EMPTY_METRICS: RenderMetrics = {
@@ -315,7 +317,20 @@ function tabTitle(file: File): string {
 function datasetStorageId(): string {
   return typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
-    : `dataset-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    : `dataset-${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(16)}`;
+}
+
+function browserSessionId(): string {
+  const key = "leysight.csv.sessionId";
+  try {
+    const existing = window.sessionStorage.getItem(key);
+    if (existing) return existing;
+    const created = datasetStorageId();
+    window.sessionStorage.setItem(key, created);
+    return created;
+  } catch {
+    return datasetStorageId();
+  }
 }
 
 function csvCell(value: string | number): string {
@@ -414,6 +429,7 @@ export function App() {
   );
   const paneSizesRef = useRef({ map: 360, histogram: 180 });
   const panesInitializedRef = useRef(false);
+  const browserSessionIdRef = useRef(browserSessionId());
 
   const [engine, setEngine] = useState<FastPointEngine | null>(null);
   const [tabs, setTabs] = useState<DatasetTab[]>([]);
@@ -440,6 +456,10 @@ export function App() {
   const [appConfig, setAppConfig] = useState<AppConfig>(DEFAULT_APP_CONFIG);
   const [persistenceState, setPersistenceState] =
     useState<PersistenceState>("checking");
+  const [savedWorkspaces, setSavedWorkspaces] =
+    useState<PersistedWorkspaceRecord[]>([]);
+  const [selectedRecoverySessionId, setSelectedRecoverySessionId] =
+    useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [showTimeline, setShowTimeline] = useState(() =>
     booleanPreference("leysight.csv.showTimeline", true),
@@ -497,7 +517,7 @@ export function App() {
     const timeout = window.setTimeout(() => {
       setPersistenceState("saving");
       const manifest = workspaceManifest(tabs, activeTabId);
-      void saveWorkspaceManifest(manifest)
+      void saveWorkspaceManifest(manifest, browserSessionIdRef.current)
         .then(() => {
           csvImportLog("OPFS manifest saved", {
             tabs: manifest.tabs.map((tab) => ({
@@ -717,6 +737,51 @@ export function App() {
     [captureActiveState, loadTabIntoEngine],
   );
 
+  const startFreshSession = useCallback((): void => {
+    setSavedWorkspaces([]);
+    recoveryInitializedRef.current = true;
+    recoveryActiveRef.current = false;
+    setPersistenceState("available");
+    advanceImportQueueRef.current();
+  }, []);
+
+  const restoreSavedWorkspace = useCallback(async (
+    savedWorkspace: PersistedWorkspace,
+  ): Promise<void> => {
+    setSavedWorkspaces([]);
+    setPersistenceState("restoring");
+    try {
+      recoveredActiveStorageIdRef.current = savedWorkspace.activeStorageId;
+      for (const tab of savedWorkspace.tabs) {
+        const files: File[] = [];
+        for (const storedFile of tab.files) {
+          files.push(await materializeCsvFile(storedFile));
+        }
+        recoveryQueueRef.current.push({
+          tab,
+          group: {
+            schemaKey: tab.schemaKey,
+            columns: tab.columns,
+            files,
+            persistedFiles: tab.files,
+          },
+        });
+      }
+      recoveryInitializedRef.current = true;
+      advanceImportQueueRef.current();
+    } catch (caught) {
+      recoveryInitializedRef.current = true;
+      recoveryActiveRef.current = false;
+      setPersistenceState("error");
+      setError(
+        `Saved workspace recovery failed: ${
+          caught instanceof Error ? caught.message : String(caught)
+        }`,
+      );
+      advanceImportQueueRef.current();
+    }
+  }, []);
+
   useEffect(() => {
     // Strict Mode intentionally mounts, cleans up, and remounts effects in
     // development. Ignore asynchronous work from the disposed generation so
@@ -742,35 +807,25 @@ export function App() {
       try {
         await requestPersistentStorage();
         if (cancelled) return;
-        const workspace = await loadWorkspaceManifest();
+        const workspaces = await loadWorkspaceManifests();
         if (cancelled) return;
-        if (!workspace?.tabs.length) {
+        if (!workspaces.length) {
           recoveryInitializedRef.current = true;
           recoveryActiveRef.current = false;
           setPersistenceState("available");
           advanceImportQueueRef.current();
           return;
         }
-        setPersistenceState("restoring");
-        recoveredActiveStorageIdRef.current = workspace.activeStorageId;
-        for (const tab of workspace.tabs) {
-          const files: File[] = [];
-          for (const storedFile of tab.files) {
-            files.push(await materializeCsvFile(storedFile));
-            if (cancelled) return;
-          }
-          recoveryQueueRef.current.push({
-            tab,
-            group: {
-              schemaKey: tab.schemaKey,
-              columns: tab.columns,
-              files,
-              persistedFiles: tab.files,
-            },
-          });
+        const currentSession = workspaces.find(
+          (record) => record.sessionId === browserSessionIdRef.current,
+        );
+        if (currentSession) {
+          await restoreSavedWorkspace(currentSession.workspace);
+          return;
         }
-        recoveryInitializedRef.current = true;
-        advanceImportQueueRef.current();
+        setSavedWorkspaces(workspaces);
+        setSelectedRecoverySessionId(workspaces[0].sessionId);
+        setPersistenceState("available");
       } catch (caught) {
         if (cancelled) return;
         recoveryInitializedRef.current = true;
@@ -789,7 +844,7 @@ export function App() {
       worker.terminate();
       if (workerRef.current === worker) workerRef.current = null;
     };
-  }, []);
+  }, [restoreSavedWorkspace]);
 
   const handleEngine = useCallback(
     (nextEngine: FastPointEngine | null) => {
@@ -2384,6 +2439,72 @@ export function App() {
           }}
           onConfirm={loadMappedCsv}
         />
+      )}
+      {savedWorkspaces.length > 0 && (
+        <ModalDialog
+          titleId="workspace-recovery-title"
+          descriptionId="workspace-recovery-description"
+          closeOnEscape={false}
+          initialFocus="[data-workspace-fresh]"
+        >
+          <div className="dialog-header">
+            <div>
+              <h2 id="workspace-recovery-title">Restore saved workspace?</h2>
+              <p>
+                {savedWorkspaces.length.toLocaleString()} saved
+                {savedWorkspaces.length === 1 ? " session" : " sessions"} found
+              </p>
+            </div>
+          </div>
+          <div className="workspace-recovery-copy" id="workspace-recovery-description">
+            <p>
+              Choose a saved session to restore in this tab, or start a separate
+              empty session.
+            </p>
+            <label className="workspace-recovery-session">
+              Saved session
+              <select
+                value={selectedRecoverySessionId}
+                onChange={(event) =>
+                  setSelectedRecoverySessionId(event.target.value)
+                }
+              >
+                {savedWorkspaces.map((record, index) => (
+                  <option value={record.sessionId} key={record.sessionId}>
+                    {`Session ${index + 1} — ${record.workspace.tabs.length} ${
+                      record.workspace.tabs.length === 1 ? "dataset" : "datasets"
+                    } — ${new Date(record.savedAt).toLocaleString()}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p>
+              Starting fresh does not delete the saved workspace. It remains
+              available for recovery until this session saves new data or you
+              explicitly clear it.
+            </p>
+          </div>
+          <div className="dialog-actions">
+            <button
+              className="button secondary"
+              data-workspace-fresh
+              onClick={startFreshSession}
+            >
+              Start fresh
+            </button>
+            <button
+              className="button primary"
+              onClick={() => {
+                const selected = savedWorkspaces.find(
+                  (record) => record.sessionId === selectedRecoverySessionId,
+                );
+                if (selected) void restoreSavedWorkspace(selected.workspace);
+              }}
+            >
+              Restore workspace
+            </button>
+          </div>
+        </ModalDialog>
       )}
       {showSettings && (
         <LayerManagerDialog

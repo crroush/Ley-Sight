@@ -48,15 +48,29 @@ test("CSV workspace keeps examples on the landing page and uses reference menus"
   assert.match(app, /Show All/);
 });
 
-test("CSV recovery persists both timeline ranges and cancels stale restores", () => {
+test("CSV recovery persists both timeline ranges and cancels stale checks", () => {
   const app = source("App.tsx");
   const storage = source("storage/opfsWorkspace.ts");
   assert.match(app, /timeFilterRange: tab\.timeFilterRange/);
-  assert.match(app, /tab\.timeFilterRange \?\? tab\.engineState\?\.timeRange/);
+  assert.match(app, /const restoredRange = tab\.timeFilterRange/);
   assert.match(app, /let cancelled = false/);
   assert.match(app, /if \(cancelled\) return/);
   assert.match(storage, /timeFilterRange\?: \[number, number\]/);
   assert.match(storage, /timeViewRange\?: \[number, number\]/);
+});
+
+test("CSV recovery asks before loading a saved workspace", () => {
+  const app = source("App.tsx");
+  const storage = source("storage/opfsWorkspace.ts");
+  assert.match(app, /Restore saved workspace\?/);
+  assert.match(app, /Start fresh/);
+  assert.match(app, /setSavedWorkspaces\(workspaces\)/);
+  assert.match(app, /savedWorkspaces\.map/);
+  assert.match(storage, /SESSION_MANIFEST_PREFIX/);
+  assert.match(storage, /loadWorkspaceManifests/);
+  assert.doesNotMatch(storage, /MANIFEST_FILE|sessionId\?: string/);
+  assert.doesNotMatch(app, /Math\.random/);
+  assert.doesNotMatch(app, /setPersistenceState\("restoring"\);\s*recoveredActiveStorageIdRef\.current = workspace/);
 });
 
 test("CSV map reserves modifier drag for selection instead of box zoom", () => {

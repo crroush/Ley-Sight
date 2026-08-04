@@ -1543,6 +1543,31 @@ button {
   background: var(--panel-2);
 }
 
+.workspace-recovery-copy {
+  max-width: 520px;
+  padding: 18px 20px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.workspace-recovery-copy p {
+  margin: 0;
+}
+
+.workspace-recovery-copy p + p {
+  margin-top: 10px;
+  color: var(--muted);
+}
+
+.workspace-recovery-session {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
 .settings-stack {
   display: grid;
   padding: 12px 20px;

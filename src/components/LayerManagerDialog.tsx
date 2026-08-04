@@ -32,7 +32,7 @@ const EMPTY_LAYER: NewLayer = {
 function newLayerId(): string {
   return typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
-    : `layer-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    : `layer-${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(16)}`;
 }
 
 export function LayerManagerDialog({
