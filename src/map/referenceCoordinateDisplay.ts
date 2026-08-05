@@ -3,7 +3,7 @@ import type {EventsKey} from "ol/events.js";
 import {unByKey} from "ol/Observable.js";
 import {toLonLat} from "ol/proj.js";
 
-export type QtCoordinateDisplay = {
+export type ReferenceCoordinateDisplay = {
   setVisible: (visible: boolean) => void;
   dispose: () => void;
 };
@@ -15,13 +15,13 @@ export type QtCoordinateDisplay = {
  * hidden state mirror ol_bridge.js. The element is attached to the map target
  * so it remains anchored to the lower-right corner through map resizes.
  */
-export function installQtCoordinateDisplay(
+export function installReferenceCoordinateDisplay(
   map: Map,
   target: HTMLElement,
   initiallyVisible = true,
-): QtCoordinateDisplay {
+): ReferenceCoordinateDisplay {
   const output = document.createElement("output");
-  output.className = "qt-default-coordinate-display";
+  output.className = "reference-default-coordinate-display";
   output.style.display = "none";
   target.appendChild(output);
 

@@ -21,8 +21,8 @@ import {
   Stroke,
   Style,
 } from "ol/style.js";
-import {createEllipsePolygon} from "./qtData";
-import {installQtCoordinateDisplay} from "../map/qtCoordinateDisplay";
+import {createEllipsePolygon} from "./referenceData";
+import {installReferenceCoordinateDisplay} from "../map/referenceCoordinateDisplay";
 
 const REMOTE_ICON =
   "https://upload.wikimedia.org/wikipedia/commons/8/88/Map_marker.svg";
@@ -226,7 +226,7 @@ export function LayerTypesExampleApp() {
         zoom: 10,
       }),
     });
-    const coordinates = installQtCoordinateDisplay(
+    const coordinates = installReferenceCoordinateDisplay(
       map,
       mapTargetRef.current,
     );
@@ -244,8 +244,8 @@ export function LayerTypesExampleApp() {
   }, []);
 
   return (
-    <main className="qt-example-window">
-      <div className="qt-map-fill" ref={mapTargetRef} />
+    <main className="reference-example-window">
+      <div className="reference-map-fill" ref={mapTargetRef} />
     </main>
   );
 }

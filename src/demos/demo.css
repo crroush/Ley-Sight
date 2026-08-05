@@ -318,7 +318,7 @@
   border-left: 0;
 }
 
-.qt-column-separator {
+.reference-column-separator {
   position: relative;
   z-index: 3;
   min-width: 6px;
@@ -327,15 +327,15 @@
   touch-action: none;
 }
 
-.qt-column-separator::after {
+.reference-column-separator::after {
   position: absolute;
   inset: 0 -3px;
   content: "";
 }
 
-.qt-column-separator:hover,
-.qt-column-separator:focus-visible,
-.qt-column-separator.is-dragging {
+.reference-column-separator:hover,
+.reference-column-separator:focus-visible,
+.reference-column-separator.is-dragging {
   outline: 0;
   background: #6d9fcc;
 }
@@ -585,9 +585,9 @@
   }
 }
 
-/* Source-matched Qt example windows ------------------------------------- */
+/* Source-matched Reference example windows ------------------------------------- */
 
-.qt-example-window {
+.reference-example-window {
   color-scheme: light;
   width: 100%;
   height: 100dvh;
@@ -600,7 +600,7 @@
   font: 14px/1.35 Arial, Helvetica, sans-serif;
 }
 
-.qt-map-fill {
+.reference-map-fill {
   position: relative;
   flex: 1 1 auto;
   min-width: 0;
@@ -608,7 +608,7 @@
   background: #fff;
 }
 
-.qt-default-coordinate-display {
+.reference-default-coordinate-display {
   position: absolute;
   right: 8px;
   bottom: 8px;
@@ -625,7 +625,7 @@
   pointer-events: none;
 }
 
-.qt-controls-row {
+.reference-controls-row {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -636,27 +636,27 @@
   background: #efefef;
 }
 
-.qt-controls-row label,
-.qt-inline-field {
+.reference-controls-row label,
+.reference-inline-field {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   white-space: nowrap;
 }
 
-.qt-controls-row input[type="checkbox"] {
+.reference-controls-row input[type="checkbox"] {
   width: 16px;
   height: 16px;
   margin: 0;
 }
 
-.qt-controls-row input[type="color"] {
+.reference-controls-row input[type="color"] {
   width: 82px;
   height: 30px;
   padding: 2px;
 }
 
-.qt-controls-row .qt-hidden-color-input {
+.reference-controls-row .reference-hidden-color-input {
   position: fixed;
   width: 1px;
   height: 1px;
@@ -664,20 +664,20 @@
   pointer-events: none;
 }
 
-.qt-color-preview {
+.reference-color-preview {
   display: inline-block;
   width: 20px;
   height: 20px;
   border: 1px solid #444;
 }
 
-.qt-error {
+.reference-error {
   margin-left: auto;
   color: #a20d0d;
   font-weight: 600;
 }
 
-.qt-raster-controls {
+.reference-raster-controls {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -687,13 +687,13 @@
   background: #efefef;
 }
 
-.qt-raster-controls > p {
+.reference-raster-controls > p {
   flex: 1 1 280px;
   max-width: 470px;
   margin: 0;
 }
 
-.qt-raster-controls fieldset {
+.reference-raster-controls fieldset {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -703,36 +703,36 @@
   border: 1px solid #a8a8a8;
 }
 
-.qt-raster-controls label {
+.reference-raster-controls label {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   white-space: nowrap;
 }
 
-.qt-raster-controls select {
+.reference-raster-controls select {
   min-width: 100px;
 }
 
-.qt-raster-controls input[type="range"] {
+.reference-raster-controls input[type="range"] {
   width: 120px;
 }
 
-.qt-raster-controls output {
+.reference-raster-controls output {
   min-width: 34px;
   font-variant-numeric: tabular-nums;
 }
 
-.qt-context-map {
+.reference-context-map {
   position: relative;
 }
 
-.qt-map-target-fill {
+.reference-map-target-fill {
   position: absolute;
   inset: 0;
 }
 
-.qt-context-menu {
+.reference-context-menu {
   position: absolute;
   z-index: 1000;
   display: grid;
@@ -744,7 +744,7 @@
   box-shadow: 0 4px 16px rgb(0 0 0 / 28%);
 }
 
-.qt-context-menu button {
+.reference-context-menu button {
   padding: 7px 12px;
   border: 0;
   background: transparent;
@@ -752,18 +752,18 @@
   text-align: left;
 }
 
-.qt-context-menu button:hover {
+.reference-context-menu button:hover {
   background: #d9e8f7;
 }
 
-.qt-context-menu hr {
+.reference-context-menu hr {
   width: 100%;
   margin: 3px 0;
   border: 0;
   border-top: 1px solid #bcbcbc;
 }
 
-.qt-click-controls {
+.reference-click-controls {
   display: flex;
   align-items: center;
   gap: 20px;
@@ -772,25 +772,25 @@
   background: #efefef;
 }
 
-.qt-click-controls p {
+.reference-click-controls p {
   flex: 1 1 auto;
   margin: 0;
 }
 
-.qt-click-controls button,
-.qt-raster-controls button,
-.qt-raster-controls select {
+.reference-click-controls button,
+.reference-raster-controls button,
+.reference-raster-controls select {
   min-height: 28px;
 }
 
-.qt-click-status {
+.reference-click-status {
   flex: 0 0 auto;
   padding: 7px 9px;
   border-bottom: 1px solid #b8b8b8;
   background: #f4f4f4;
 }
 
-.qt-description-controls {
+.reference-description-controls {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -800,49 +800,49 @@
   background: #efefef;
 }
 
-.qt-description-controls p {
+.reference-description-controls p {
   flex: 1 1 auto;
   margin: 0;
 }
 
-.qt-description-controls button {
+.reference-description-controls button {
   width: 150px;
   min-height: 30px;
 }
 
-.qt-description-controls button.is-danger {
+.reference-description-controls button.is-danger {
   color: #fff;
   background: #ff6b6b;
 }
 
-.qt-instruction-panel,
-.qt-recolor-controls {
+.reference-instruction-panel,
+.reference-recolor-controls {
   flex: 0 0 auto;
   padding: 8px;
   border-bottom: 1px solid #b8b8b8;
   background: #efefef;
 }
 
-.qt-instruction-panel p {
+.reference-instruction-panel p {
   margin: 0 0 6px;
 }
 
-.qt-instruction-panel strong,
-.qt-recolor-controls span {
+.reference-instruction-panel strong,
+.reference-recolor-controls span {
   color: blue;
 }
 
-.qt-recolor-controls {
+.reference-recolor-controls {
   display: grid;
   gap: 8px;
 }
 
-.qt-recolor-controls > div {
+.reference-recolor-controls > div {
   display: flex;
   gap: 5px;
 }
 
-.qt-recolor-controls button {
+.reference-recolor-controls button {
   width: 80px;
   min-height: 30px;
   border: 1px solid #777;
@@ -850,29 +850,29 @@
   font-weight: 700;
 }
 
-.qt-measurement-layout {
+.reference-measurement-layout {
   display: grid;
   flex: 1 1 auto;
   min-height: 0;
   grid-template-columns: minmax(0, 980fr) minmax(280px, 320fr);
 }
 
-.qt-measurement-map-column {
+.reference-measurement-map-column {
   display: flex;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
 }
 
-.qt-measurement-map-column .qt-description-controls button:first-of-type {
+.reference-measurement-map-column .reference-description-controls button:first-of-type {
   width: 220px;
 }
 
-.qt-measurement-map-column .qt-description-controls button:last-of-type {
+.reference-measurement-map-column .reference-description-controls button:last-of-type {
   width: 160px;
 }
 
-.qt-measurement-summary {
+.reference-measurement-summary {
   display: flex;
   min-width: 280px;
   min-height: 0;
@@ -881,12 +881,12 @@
   background: #efefef;
 }
 
-.qt-measurement-summary h2 {
+.reference-measurement-summary h2 {
   margin: 0 0 12px;
   font-size: 16px;
 }
 
-.qt-measurement-summary ol {
+.reference-measurement-summary ol {
   flex: 1 1 auto;
   margin: 0 0 10px;
   overflow: auto;
@@ -895,19 +895,19 @@
   background: #fff;
 }
 
-.qt-measurement-summary li {
+.reference-measurement-summary li {
   margin-bottom: 5px;
 }
 
-.qt-measurement-summary > strong {
+.reference-measurement-summary > strong {
   border-radius: 4px;
   padding: 8px;
   background: #e8f4f8;
   font-size: 14px;
 }
 
-.qt-coordinate-controls,
-.qt-fit-controls {
+.reference-coordinate-controls,
+.reference-fit-controls {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
@@ -917,36 +917,36 @@
   background: #efefef;
 }
 
-.qt-coordinate-controls p {
+.reference-coordinate-controls p {
   flex: 1 1 auto;
   margin: 0;
 }
 
-.qt-coordinate-controls button {
+.reference-coordinate-controls button {
   width: 150px;
   min-height: 30px;
 }
 
-.qt-coordinate-controls strong {
+.reference-coordinate-controls strong {
   border-radius: 4px;
   padding: 8px;
 }
 
-.qt-coordinate-controls strong.is-enabled {
+.reference-coordinate-controls strong.is-enabled {
   color: #155724;
   background: #d4edda;
 }
 
-.qt-coordinate-controls strong.is-disabled {
+.reference-coordinate-controls strong.is-disabled {
   color: #721c24;
   background: #f8d7da;
 }
 
-.qt-coordinate-map {
+.reference-coordinate-map {
   position: relative;
 }
 
-.qt-coordinate-output {
+.reference-coordinate-output {
   position: absolute;
   right: 8px;
   bottom: 8px;
@@ -961,15 +961,15 @@
   text-align: center;
 }
 
-.qt-fit-controls button {
+.reference-fit-controls button {
   min-height: 28px;
 }
 
-.qt-fit-controls span {
+.reference-fit-controls span {
   margin-left: auto;
 }
 
-.qt-layer-controls {
+.reference-layer-controls {
   display: grid;
   flex: 0 0 auto;
   gap: 7px;
@@ -978,7 +978,7 @@
   background: #efefef;
 }
 
-.qt-layer-controls fieldset {
+.reference-layer-controls fieldset {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -986,36 +986,36 @@
   border: 1px solid #aaa;
 }
 
-.qt-layer-controls label {
+.reference-layer-controls label {
   display: flex;
   flex: 1 1 auto;
   align-items: center;
   gap: 6px;
 }
 
-.qt-layer-controls label > input {
+.reference-layer-controls label > input {
   flex: 1 1 auto;
   min-width: 420px;
 }
 
-.qt-layer-controls label > select {
+.reference-layer-controls label > select {
   flex: 1 1 auto;
 }
 
-.qt-layer-grid {
+.reference-layer-grid {
   display: grid !important;
   grid-template-columns: 150px 70px minmax(240px, 1fr) 54px;
 }
 
-.qt-layer-grid input[type="checkbox"] {
+.reference-layer-grid input[type="checkbox"] {
   justify-self: start;
 }
 
-.qt-layer-grid input[type="range"] {
+.reference-layer-grid input[type="range"] {
   width: 100%;
 }
 
-.qt-movable-instructions {
+.reference-movable-instructions {
   display: grid;
   flex: 0 0 auto;
   gap: 2px;
@@ -1024,12 +1024,12 @@
   background: #efefef;
 }
 
-.qt-virtual-table-window {
+.reference-virtual-table-window {
   gap: 8px;
   padding: 10px;
 }
 
-.qt-table-frame {
+.reference-table-frame {
   display: grid;
   min-width: 0;
   min-height: 0;
@@ -1038,17 +1038,17 @@
   background: #fff;
 }
 
-.qt-virtual-table-window .qt-table-frame {
+.reference-virtual-table-window .reference-table-frame {
   flex: 1 1 auto;
 }
 
-.qt-table-header,
-.qt-table-row {
+.reference-table-header,
+.reference-table-row {
   display: grid;
   align-items: center;
 }
 
-.qt-table-header {
+.reference-table-header {
   border-bottom: 1px solid #9e9e9e;
   color: #222;
   background: #efefef;
@@ -1056,9 +1056,9 @@
   font-weight: 600;
 }
 
-.qt-table-header > span,
-.qt-table-header > button,
-.qt-table-row > span {
+.reference-table-header > span,
+.reference-table-header > button,
+.reference-table-row > span {
   min-width: 0;
   padding: 0 7px;
   overflow: hidden;
@@ -1066,13 +1066,13 @@
   white-space: nowrap;
 }
 
-.qt-table-header > span:not(:last-child),
-.qt-table-header > button:not(:last-child),
-.qt-table-row > span:not(:last-child) {
+.reference-table-header > span:not(:last-child),
+.reference-table-header > button:not(:last-child),
+.reference-table-row > span:not(:last-child) {
   border-right: 1px solid #d2d2d2;
 }
 
-.qt-table-header > button {
+.reference-table-header > button {
   height: 100%;
   border-top: 0;
   border-bottom: 0;
@@ -1083,18 +1083,18 @@
   text-align: left;
 }
 
-.qt-table-scroll {
+.reference-table-scroll {
   position: relative;
   min-height: 0;
   overflow: auto;
 }
 
-.qt-table-spacer {
+.reference-table-spacer {
   position: relative;
   width: 100%;
 }
 
-.qt-table-row {
+.reference-table-row {
   position: absolute;
   top: 0;
   left: 0;
@@ -1108,25 +1108,25 @@
   text-align: left;
 }
 
-.qt-table-row:hover {
+.reference-table-row:hover {
   background: #e8f2fb;
 }
 
-.qt-table-row.is-selected {
+.reference-table-row.is-selected {
   color: #fff;
   background: #3478c8;
 }
 
-.qt-virtual-columns {
+.reference-virtual-columns {
   grid-template-columns: minmax(160px, 1fr) minmax(100px, 0.7fr) minmax(100px, 0.7fr);
 }
 
-.qt-activity-columns {
+.reference-activity-columns {
   grid-template-columns: minmax(90px, 0.6fr) minmax(110px, 0.8fr) minmax(210px, 1.4fr);
 }
 
-.qt-table-status,
-.qt-time-info {
+.reference-table-status,
+.reference-time-info {
   flex: 0 0 auto;
   margin: 0;
   border: 1px solid #b2c8d4;
@@ -1137,12 +1137,12 @@
   font-size: 12px;
 }
 
-.qt-wide-button {
+.reference-wide-button {
   flex: 0 0 auto;
   min-height: 30px;
 }
 
-.qt-time-histogram-layout {
+.reference-time-histogram-layout {
   display: grid;
   flex: 1 1 auto;
   min-height: 0;
@@ -1151,7 +1151,7 @@
   padding: 8px;
 }
 
-.qt-time-map-column {
+.reference-time-map-column {
   display: grid;
   min-width: 0;
   min-height: 0;
@@ -1159,7 +1159,7 @@
   gap: 8px;
 }
 
-.qt-time-map-column .histogram-panel {
+.reference-time-map-column .histogram-panel {
   max-height: 260px;
   border: 1px solid #aaa;
   border-radius: 0;
@@ -1167,29 +1167,29 @@
   background: #efefef;
 }
 
-.qt-time-map-column .histogram-panel .panel-heading {
+.reference-time-map-column .histogram-panel .panel-heading {
   color: #171717;
 }
 
-.qt-time-map-column .histogram-panel .muted,
-.qt-time-map-column .histogram-panel .eyebrow {
+.reference-time-map-column .histogram-panel .muted,
+.reference-time-map-column .histogram-panel .eyebrow {
   color: #4c4c4c;
 }
 
-.qt-time-map-column .text-button {
+.reference-time-map-column .text-button {
   color: #174c7e;
 }
 
-.qt-time-map-column .histogram-plot {
+.reference-time-map-column .histogram-plot {
   background: #fff;
 }
 
-.qt-linked-window {
+.reference-linked-window {
   padding: 8px;
   gap: 8px;
 }
 
-.qt-link-info {
+.reference-link-info {
   flex: 0 0 auto;
   margin: 0;
   border-radius: 4px;
@@ -1199,7 +1199,7 @@
   font-size: 12px;
 }
 
-.qt-linked-layout {
+.reference-linked-layout {
   display: grid;
   flex: 1 1 auto;
   min-height: 0;
@@ -1207,7 +1207,7 @@
   border: 1px solid #a8a8a8;
 }
 
-.qt-tabs {
+.reference-tabs {
   display: grid;
   min-height: 0;
   grid-template-rows: 31px minmax(0, 1fr);
@@ -1215,7 +1215,7 @@
   background: #efefef;
 }
 
-.qt-row-separator {
+.reference-row-separator {
   position: relative;
   z-index: 3;
   min-height: 6px;
@@ -1224,27 +1224,27 @@
   touch-action: none;
 }
 
-.qt-row-separator::after {
+.reference-row-separator::after {
   position: absolute;
   inset: -3px 0;
   content: "";
 }
 
-.qt-row-separator:hover,
-.qt-row-separator:focus-visible,
-.qt-row-separator.is-dragging {
+.reference-row-separator:hover,
+.reference-row-separator:focus-visible,
+.reference-row-separator.is-dragging {
   outline: 0;
   background: #6d9fcc;
 }
 
-.qt-tab-buttons {
+.reference-tab-buttons {
   display: flex;
   align-items: end;
   padding-left: 4px;
   gap: 2px;
 }
 
-.qt-tab-buttons button {
+.reference-tab-buttons button {
   height: 28px;
   border: 1px solid #999;
   border-bottom: 0;
@@ -1252,18 +1252,18 @@
   background: #dedede;
 }
 
-.qt-tab-buttons button.is-active {
+.reference-tab-buttons button.is-active {
   position: relative;
   height: 30px;
   background: #fff;
 }
 
-.qt-integration-window {
+.reference-integration-window {
   padding: 8px;
   gap: 8px;
 }
 
-.qt-integration-layout {
+.reference-integration-layout {
   display: grid;
   flex: 1 1 auto;
   min-height: 0;
@@ -1271,20 +1271,20 @@
   gap: 0;
 }
 
-.qt-integration-controls {
+.reference-integration-controls {
   min-width: 0;
   padding: 8px;
   background: #efefef;
   overflow: auto;
 }
 
-.qt-integration-controls > strong,
-.qt-integration-controls > span {
+.reference-integration-controls > strong,
+.reference-integration-controls > span {
   display: block;
   margin-bottom: 12px;
 }
 
-.qt-integration-controls fieldset {
+.reference-integration-controls fieldset {
   display: grid;
   margin: 0 0 16px;
   border: 0;
@@ -1292,40 +1292,40 @@
   gap: 5px;
 }
 
-.qt-integration-controls legend {
+.reference-integration-controls legend {
   margin-bottom: 6px;
   font-weight: 700;
 }
 
-.qt-integration-controls input[type="number"],
-.qt-integration-controls button {
+.reference-integration-controls input[type="number"],
+.reference-integration-controls button {
   min-height: 28px;
 }
 
-.qt-integration-controls label:has(input[type="checkbox"]) {
+.reference-integration-controls label:has(input[type="checkbox"]) {
   display: flex;
   align-items: center;
   gap: 5px;
 }
 
-.qt-delete-button {
+.reference-delete-button {
   width: 100%;
   margin-bottom: 12px;
   background: #fcbdbd;
   font-weight: 700;
 }
 
-.qt-integration-columns {
+.reference-integration-columns {
   grid-template-columns: 0.9fr 0.7fr 1fr 1.1fr;
 }
 
-.qt-table-context-menu {
+.reference-table-context-menu {
   position: fixed;
   z-index: 2000;
   width: 190px;
 }
 
-.qt-delayed-raster-controls {
+.reference-delayed-raster-controls {
   display: grid;
   flex: 0 0 auto;
   grid-template-columns: minmax(250px, 3fr) minmax(150px, 1fr) minmax(520px, 3fr);
@@ -1336,37 +1336,37 @@
   background: #efefef;
 }
 
-.qt-delayed-raster-controls p {
+.reference-delayed-raster-controls p {
   margin: 0;
 }
 
-.qt-delayed-raster-controls fieldset {
+.reference-delayed-raster-controls fieldset {
   margin: 0;
   border: 1px solid #aaa;
 }
 
-.qt-delayed-raster-controls label {
+.reference-delayed-raster-controls label {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.qt-delayed-raster-controls input {
+.reference-delayed-raster-controls input {
   width: 56px;
 }
 
-.qt-delayed-raster-controls > strong {
+.reference-delayed-raster-controls > strong {
   min-width: 0;
   font-size: 12px;
   overflow-wrap: anywhere;
 }
 
-.filter-qt-window .filter-example-content {
+.filter-reference-window .filter-example-content {
   flex: 1 1 auto;
 }
 
-.filter-qt-window .filter-sliders-panel,
-.filter-qt-window .filter-table-panel {
+.filter-reference-window .filter-sliders-panel,
+.filter-reference-window .filter-table-panel {
   --line: #b8b8b8;
   --line-soft: #d8d8d8;
   --muted: #4d4d4d;
@@ -1375,16 +1375,16 @@
   --text: #171717;
 }
 
-.filter-qt-window .filter-sliders-panel {
+.filter-reference-window .filter-sliders-panel {
   grid-template-columns: 1fr;
   padding: 9px;
 }
 
-.filter-qt-window .filter-sliders-panel h2 {
+.filter-reference-window .filter-sliders-panel h2 {
   font-size: 14px;
 }
 
-.filter-qt-window .filter-sliders-panel p {
+.filter-reference-window .filter-sliders-panel p {
   padding: 8px;
   color: #183645;
   background: #e8f4f8;
@@ -1397,12 +1397,12 @@
 }
 
 @media (max-width: 1050px) {
-  .qt-raster-controls {
+  .reference-raster-controls {
     align-items: stretch;
     flex-wrap: wrap;
   }
 
-  .qt-raster-controls > p {
+  .reference-raster-controls > p {
     flex-basis: 100%;
     max-width: none;
   }

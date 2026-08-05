@@ -27,7 +27,7 @@ import {
   Text,
 } from "ol/style.js";
 import {gradientColor} from "../lib/colorPalettes";
-import {createEllipsePolygon} from "./qtData";
+import {createEllipsePolygon} from "./referenceData";
 
 type VertexMode = "move" | "modify" | "none";
 
@@ -383,8 +383,8 @@ export function MovableVectorExampleApp() {
   }, []);
 
   return (
-    <main className="qt-example-window">
-      <section className="qt-movable-instructions">
+    <main className="reference-example-window">
+      <section className="reference-movable-instructions">
         <strong>Movable Vector Feature Demo</strong>
         <span>• Every vector feature type appears as movable and not movable.</span>
         <span>• Feature labels only say whether the object is movable.</span>
@@ -393,7 +393,7 @@ export function MovableVectorExampleApp() {
         <span>• Navy polygon and gradient line: whole-object movement only.</span>
         <span>• Red objects, including the red icon point, are not movable and should stay fixed.</span>
       </section>
-      <div className="qt-map-fill" ref={mapTargetRef} />
+      <div className="reference-map-fill" ref={mapTargetRef} />
     </main>
   );
 }

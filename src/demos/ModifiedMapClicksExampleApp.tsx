@@ -113,8 +113,8 @@ export function ModifiedMapClicksExampleApp() {
   }, []);
 
   return (
-    <main className="qt-example-window">
-      <section className="qt-click-controls">
+    <main className="reference-example-window">
+      <section className="reference-click-controls">
         <p>
           Click the map to inspect coordinates. Hold <strong>T</strong> while
           clicking to add a yellow target. Hold <strong>Shift+T</strong> to add
@@ -132,8 +132,8 @@ export function ModifiedMapClicksExampleApp() {
           Clear targets
         </button>
       </section>
-      <div className="qt-click-status">{status}</div>
-      <div className="qt-map-fill" ref={mapTargetRef} />
+      <div className="reference-click-status">{status}</div>
+      <div className="reference-map-fill" ref={mapTargetRef} />
     </main>
   );
 }

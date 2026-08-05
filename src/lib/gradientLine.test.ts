@@ -6,7 +6,7 @@ import {
   renderedGradientValues,
 } from "./gradientLine";
 
-test("gradient coordinates use the Qt subsegment count and endpoints", () => {
+test("gradient coordinates use the Reference subsegment count and endpoints", () => {
   const expanded = expandGradientCoordinates([[0, 0], [2, 4]], 4);
   assert.deepEqual(expanded, [
     [0, 0],
@@ -24,7 +24,7 @@ test("per-segment values become interpolated midpoint values", () => {
   );
 });
 
-test("explicit colors repeat for every Qt subsegment", () => {
+test("explicit colors repeat for every Reference subsegment", () => {
   assert.deepEqual(
     expandSegmentColors(["red", "blue"], 3),
     ["red", "red", "red", "blue", "blue", "blue"],

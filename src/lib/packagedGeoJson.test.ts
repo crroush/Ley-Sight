@@ -26,7 +26,7 @@ describe("packaged GeoJSON transport", () => {
     );
   });
 
-  it("ships the complete Qt country and hydrology feature sets", () => {
+  it("ships the complete Reference country and hydrology feature sets", () => {
     const parse = (name: string): {features: unknown[]} =>
       JSON.parse(
         gunzipSync(

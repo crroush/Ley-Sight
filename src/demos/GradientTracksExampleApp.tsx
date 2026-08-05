@@ -25,7 +25,7 @@ import {
   expandSegmentColors,
   renderedGradientValues,
 } from "../lib/gradientLine";
-import {installQtCoordinateDisplay} from "../map/qtCoordinateDisplay";
+import {installReferenceCoordinateDisplay} from "../map/referenceCoordinateDisplay";
 
 type Coordinate = readonly [number, number];
 
@@ -207,7 +207,7 @@ export function GradientTracksExampleApp() {
         zoom: 13,
       }),
     });
-    const coordinates = installQtCoordinateDisplay(
+    const coordinates = installReferenceCoordinateDisplay(
       map,
       mapTargetRef.current,
     );
@@ -225,8 +225,8 @@ export function GradientTracksExampleApp() {
   }, []);
 
   return (
-    <main className="qt-example-window">
-      <div className="qt-map-fill" ref={mapTargetRef} />
+    <main className="reference-example-window">
+      <div className="reference-map-fill" ref={mapTargetRef} />
     </main>
   );
 }

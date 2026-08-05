@@ -16,7 +16,7 @@ import {
   Stroke,
   Style,
 } from "ol/style.js";
-import {installQtCoordinateDisplay} from "../map/qtCoordinateDisplay";
+import {installReferenceCoordinateDisplay} from "../map/referenceCoordinateDisplay";
 
 const DEFAULT_OSM_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const ALT_OSM_URL = "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -94,7 +94,7 @@ export function LayerManagerExampleApp() {
       layers: [baseLayer, tileLayer, wmsLayer, markerLayer],
       view: new View({center: fromLonLat([-98, 39]), zoom: 4}),
     });
-    const coordinates = installQtCoordinateDisplay(
+    const coordinates = installReferenceCoordinateDisplay(
       map,
       mapTargetRef.current,
     );
@@ -108,8 +108,8 @@ export function LayerManagerExampleApp() {
   }, []);
 
   return (
-    <main className="qt-example-window">
-      <section className="qt-layer-controls">
+    <main className="reference-example-window">
+      <section className="reference-layer-controls">
         <fieldset>
           <legend>Generic Tile Source</legend>
           <label>
@@ -161,7 +161,7 @@ export function LayerManagerExampleApp() {
             </select>
           </label>
         </fieldset>
-        <fieldset className="qt-layer-grid">
+        <fieldset className="reference-layer-grid">
           <legend>Layers</legend>
           <strong>Layer</strong><strong>Visible</strong>
           <strong>Opacity</strong><strong>Value</strong>
@@ -239,7 +239,7 @@ export function LayerManagerExampleApp() {
           <output>{wmsOpacity.toFixed(2)}</output>
         </fieldset>
       </section>
-      <div className="qt-map-fill" ref={mapTargetRef} />
+      <div className="reference-map-fill" ref={mapTargetRef} />
     </main>
   );
 }

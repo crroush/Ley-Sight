@@ -6,7 +6,7 @@ import View from "ol/View.js";
 import {fromLonLat, transformExtent} from "ol/proj.js";
 import ImageStatic from "ol/source/ImageStatic.js";
 import OSM from "ol/source/OSM.js";
-import {installQtCoordinateDisplay} from "../map/qtCoordinateDisplay";
+import {installReferenceCoordinateDisplay} from "../map/referenceCoordinateDisplay";
 
 type RasterResult = {
   type: "complete";
@@ -178,7 +178,7 @@ export function DelayedRasterExampleApp() {
       width,
       height,
       mask: "irregular",
-      profile: "qt14",
+      profile: "reference14",
       quality: qualityRef.current,
       qLon,
       qLat,
@@ -220,7 +220,7 @@ export function DelayedRasterExampleApp() {
         zoom: 10,
       }),
     });
-    const coordinates = installQtCoordinateDisplay(
+    const coordinates = installReferenceCoordinateDisplay(
       map,
       mapRef.current,
     );
@@ -243,8 +243,8 @@ export function DelayedRasterExampleApp() {
   }, []);
 
   return (
-    <main className="qt-example-window">
-      <section className="qt-delayed-raster-controls">
+    <main className="reference-example-window">
+      <section className="reference-delayed-raster-controls">
         <p>
           Fixed geographic heatmap footprint. Zooming changes computed raster
           pixel dimensions (shown in status + image stamp).
@@ -269,7 +269,7 @@ export function DelayedRasterExampleApp() {
         </fieldset>
         <strong>{status}</strong>
       </section>
-      <div className="qt-map-fill" ref={mapRef} />
+      <div className="reference-map-fill" ref={mapRef} />
     </main>
   );
 }

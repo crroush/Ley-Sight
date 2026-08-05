@@ -7,7 +7,7 @@ import {transformExtent, fromLonLat} from "ol/proj.js";
 import ImageStatic from "ol/source/ImageStatic.js";
 import OSM from "ol/source/OSM.js";
 import type {MaskShape} from "../lib/rasterMasks";
-import {installQtCoordinateDisplay} from "../map/qtCoordinateDisplay";
+import {installReferenceCoordinateDisplay} from "../map/referenceCoordinateDisplay";
 
 type RasterResult = {
   type: "complete";
@@ -54,7 +54,7 @@ function resultUrl(result: RasterResult): string {
 /**
  * Browser port of examples/05_raster_overlay.py.
  *
- * The Qt example always generates a square 512×512 image. Keeping that
+ * The Reference example always generates a square 512×512 image. Keeping that
  * invariant is important: deriving the raster dimensions from the viewport
  * changes every non-circular mask's aspect ratio.
  */
@@ -79,7 +79,7 @@ export function RasterOverlayExampleApp() {
       width: 512,
       height: 512,
       mask: maskedShape,
-      profile: "qt05",
+      profile: "reference05",
     });
     referenceWorkerRef.current?.postMessage({
       type: "render",
@@ -87,7 +87,7 @@ export function RasterOverlayExampleApp() {
       width: 512,
       height: 512,
       mask: referenceShape,
-      profile: "qt05",
+      profile: "reference05",
     });
   };
 
@@ -140,7 +140,7 @@ export function RasterOverlayExampleApp() {
         zoom: 10,
       }),
     });
-    const coordinates = installQtCoordinateDisplay(
+    const coordinates = installReferenceCoordinateDisplay(
       map,
       mapTargetRef.current,
     );
@@ -151,7 +151,7 @@ export function RasterOverlayExampleApp() {
       width: 512,
       height: 512,
       mask: "rectangle",
-      profile: "qt05",
+      profile: "reference05",
     });
     referenceWorker.postMessage({
       type: "render",
@@ -159,7 +159,7 @@ export function RasterOverlayExampleApp() {
       width: 512,
       height: 512,
       mask: "circle",
-      profile: "qt05",
+      profile: "reference05",
     });
 
     return () => {
@@ -173,8 +173,8 @@ export function RasterOverlayExampleApp() {
   }, []);
 
   return (
-    <main className="qt-example-window">
-      <section className="qt-raster-controls">
+    <main className="reference-example-window">
+      <section className="reference-raster-controls">
         <p>
           Demonstrate two polygon-masked raster images with 30% overlap.
           Choose a mask independently for each heatmap.
@@ -252,7 +252,7 @@ export function RasterOverlayExampleApp() {
           </label>
         </fieldset>
       </section>
-      <div className="qt-map-fill" ref={mapTargetRef} />
+      <div className="reference-map-fill" ref={mapTargetRef} />
     </main>
   );
 }

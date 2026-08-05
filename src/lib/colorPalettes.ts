@@ -23,7 +23,7 @@ export const COLOR_PALETTES: ReadonlyArray<{
 const STOPS: Record<ColorPalette, readonly string[]> = {
   turbo: [
     // 64 samples from Matplotlib's Turbo table. The previous seven-stop
-    // approximation visibly changed the Qt gradient tracks and compressed
+    // approximation visibly changed the Reference gradient tracks and compressed
     // numeric CSV colors into broad bands.
     "#30123b", "#351e58", "#392a73", "#3d358b", "#4040a2", "#424bb5",
     "#4456c7", "#4661d6", "#466be3", "#4776ee", "#4680f6", "#458afc",
