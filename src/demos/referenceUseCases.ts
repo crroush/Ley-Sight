@@ -3,4 +3,4 @@ export {
   type SourceContract as ReferenceSourceContract,
   type UseCase as ReferenceUseCase,
   type ParityStatus,
-} from "../examples/data/useCases";
+} from '../examples/data/useCases'

@@ -1,12 +1,12 @@
 type ModifierPointerEvent = {
   originalEvent: {
-    altKey: boolean;
-    ctrlKey: boolean;
-    metaKey: boolean;
-    shiftKey: boolean;
-    button?: number;
-  };
-};
+    altKey: boolean
+    ctrlKey: boolean
+    metaKey: boolean
+    shiftKey: boolean
+    button?: number
+  }
+}
 
 /**
  * Own Ctrl/Cmd + primary-button drag for map selection on every platform.
@@ -17,11 +17,11 @@ type ModifierPointerEvent = {
  * reliable. Shift remains free of selection semantics.
  */
 export function modifierBoxSelection(event: ModifierPointerEvent): boolean {
-  const original = event.originalEvent;
+  const original = event.originalEvent
   return (
     (original.button ?? 0) === 0 &&
     !original.altKey &&
     !original.shiftKey &&
     (original.ctrlKey || original.metaKey)
-  );
+  )
 }

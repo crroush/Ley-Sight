@@ -1,4 +1,4 @@
 export {
   DualTableLinkingExampleApp,
   MetadataOnlyLinkingExampleApp,
-} from "../examples/recipes/LinkedTableRecipes";
+} from '../examples/recipes/LinkedTableRecipes'

@@ -9,75 +9,75 @@ import {
   MousePointerClick,
   SlidersHorizontal,
   Construction,
-} from "lucide-react";
+} from 'lucide-react'
 import {
   REFERENCE_USE_CASES,
   type ParityStatus,
-} from "./demos/referenceUseCases";
-import "./styles.css";
+} from './demos/referenceUseCases'
+import './styles.css'
 
 const STATUS_LABELS: Record<ParityStatus, string> = {
-  available: "Parity verified",
-  partial: "Port in progress",
-  planned: "Representative only",
-};
+  available: 'Parity verified',
+  partial: 'Port in progress',
+  planned: 'Representative only',
+}
 
 const DEMO_APPS = [
   {
-    title: "CSV data lab",
+    title: 'CSV data lab',
     description:
-      "Millions of points and ellipses, timeline, virtual table, measurement, and layer controls.",
-    href: "/csv.html",
+      'Millions of points and ellipses, timeline, virtual table, measurement, and layer controls.',
+    href: '/csv.html',
     icon: Database,
   },
   {
-    title: "Vector geometry",
+    title: 'Vector geometry',
     description:
-      "Styled geometry, packaged boundaries, selection, recoloring, movement, and editing.",
-    href: "/vector.html",
+      'Styled geometry, packaged boundaries, selection, recoloring, movement, and editing.',
+    href: '/vector.html',
     icon: MapIcon,
   },
   {
-    title: "Raster processing",
+    title: 'Raster processing',
     description:
-      "Georeferenced image overlays, polygon masks, debounce, and hard worker cancellation.",
-    href: "/raster.html",
+      'Georeferenced image overlays, polygon masks, debounce, and hard worker cancellation.',
+    href: '/raster.html',
     icon: ImageIcon,
   },
   {
-    title: "Numeric and time filtering",
+    title: 'Numeric and time filtering',
     description:
-      "Independent numeric and timestamp windows synchronized across a map and table.",
-    href: "/filtering.html",
+      'Independent numeric and timestamp windows synchronized across a map and table.',
+    href: '/filtering.html',
     icon: SlidersHorizontal,
   },
   {
-    title: "Linked map and tables",
+    title: 'Linked map and tables',
     description:
-      "One-to-many spatial linking and metadata-only child records with shared selection.",
-    href: "/linked-tables.html",
+      'One-to-many spatial linking and metadata-only child records with shared selection.',
+    href: '/linked-tables.html',
     icon: Link2,
   },
   {
-    title: "Map events",
+    title: 'Map events',
     description:
-      "Right-click actions plus held-key and modifier-aware map click bindings.",
-    href: "/events.html",
+      'Right-click actions plus held-key and modifier-aware map click bindings.',
+    href: '/events.html',
     icon: MousePointerClick,
   },
   {
-    title: "Viewshed / LOS",
+    title: 'Viewshed / LOS',
     description:
-      "Application for computing a viewshed/LOS to see if your terrian is blocking your transmitter or receiver",
-    href: "/viewshed.html",
+      'Application for computing a viewshed/LOS to see if your terrian is blocking your transmitter or receiver',
+    href: '/viewshed.html',
     icon: MousePointerClick,
   },
-] as const;
+] as const
 
-function StatusIcon({status}: {status: ParityStatus}) {
-  if (status === "available") return <CheckCircle2 size={16} />;
-  if (status === "partial") return <Construction size={16} />;
-  return <CircleDashed size={16} />;
+function StatusIcon({ status }: { status: ParityStatus }) {
+  if (status === 'available') return <CheckCircle2 size={16} />
+  if (status === 'partial') return <Construction size={16} />
+  return <CircleDashed size={16} />
 }
 
 export function UseCasesApp() {
@@ -96,10 +96,10 @@ export function UseCasesApp() {
       </header>
       <section className="app-launch-grid" aria-label="Example applications">
         {DEMO_APPS.map((app) => {
-          const Icon = app.icon;
+          const Icon = app.icon
           const useCaseCount = REFERENCE_USE_CASES.filter(
-            (useCase) => useCase.href.split("?")[0] === app.href,
-          ).length;
+            (useCase) => useCase.href.split('?')[0] === app.href
+          ).length
           return (
             <a className="app-launch-card" href={app.href} key={app.href}>
               <Icon size={21} />
@@ -110,7 +110,7 @@ export function UseCasesApp() {
               </div>
               <ArrowRight size={17} />
             </a>
-          );
+          )
         })}
       </section>
       <div className="catalog-section-heading">
@@ -119,10 +119,13 @@ export function UseCasesApp() {
       </div>
       <section className="catalog-grid">
         {REFERENCE_USE_CASES.map((useCase) => (
-          <article className={`use-case-card status-${useCase.status}`} key={useCase.id}>
+          <article
+            className={`use-case-card status-${useCase.status}`}
+            key={useCase.id}
+          >
             <div className="use-case-heading">
               <span className="use-case-number">
-                {String(useCase.id).padStart(2, "0")}
+                {String(useCase.id).padStart(2, '0')}
               </span>
               <span className="status-badge">
                 <StatusIcon status={useCase.status} />
@@ -150,5 +153,5 @@ export function UseCasesApp() {
         ))}
       </section>
     </main>
-  );
+  )
 }

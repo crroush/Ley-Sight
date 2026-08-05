@@ -1,12 +1,12 @@
-import type Map from "ol/Map.js";
-import type {EventsKey} from "ol/events.js";
-import {unByKey} from "ol/Observable.js";
-import {toLonLat} from "ol/proj.js";
+import type Map from 'ol/Map.js'
+import type { EventsKey } from 'ol/events.js'
+import { unByKey } from 'ol/Observable.js'
+import { toLonLat } from 'ol/proj.js'
 
 export type ReferenceCoordinateDisplay = {
-  setVisible: (visible: boolean) => void;
-  dispose: () => void;
-};
+  setVisible: (visible: boolean) => void
+  dispose: () => void
+}
 
 /**
  * Installs the coordinate readout that OLMapWidget enables by default.
@@ -18,43 +18,42 @@ export type ReferenceCoordinateDisplay = {
 export function installReferenceCoordinateDisplay(
   map: Map,
   target: HTMLElement,
-  initiallyVisible = true,
+  initiallyVisible = true
 ): ReferenceCoordinateDisplay {
-  const output = document.createElement("output");
-  output.className = "reference-default-coordinate-display";
-  output.style.display = "none";
-  target.appendChild(output);
+  const output = document.createElement('output')
+  output.className = 'reference-default-coordinate-display'
+  output.style.display = 'none'
+  target.appendChild(output)
 
-  let pointerKey: EventsKey | null = null;
-  let lastUpdate = 0;
+  let pointerKey: EventsKey | null = null
+  let lastUpdate = 0
 
   const setVisible = (visible: boolean): void => {
     if (visible && !pointerKey) {
-      pointerKey = map.on("pointermove", (event) => {
-        const now = performance.now();
-        if (now - lastUpdate < 50) return;
-        lastUpdate = now;
-        const [longitude, latitude] = toLonLat(event.coordinate);
-        output.textContent =
-          `Lat: ${latitude.toFixed(6)}, Lon: ${longitude.toFixed(6)}`;
-        output.style.display = "block";
-      });
-      return;
+      pointerKey = map.on('pointermove', (event) => {
+        const now = performance.now()
+        if (now - lastUpdate < 50) return
+        lastUpdate = now
+        const [longitude, latitude] = toLonLat(event.coordinate)
+        output.textContent = `Lat: ${latitude.toFixed(6)}, Lon: ${longitude.toFixed(6)}`
+        output.style.display = 'block'
+      })
+      return
     }
     if (!visible && pointerKey) {
-      unByKey(pointerKey);
-      pointerKey = null;
-      output.style.display = "none";
+      unByKey(pointerKey)
+      pointerKey = null
+      output.style.display = 'none'
     }
-  };
+  }
 
-  setVisible(initiallyVisible);
+  setVisible(initiallyVisible)
   return {
     setVisible,
     dispose: () => {
-      if (pointerKey) unByKey(pointerKey);
-      pointerKey = null;
-      output.remove();
+      if (pointerKey) unByKey(pointerKey)
+      pointerKey = null
+      output.remove()
     },
-  };
+  }
 }

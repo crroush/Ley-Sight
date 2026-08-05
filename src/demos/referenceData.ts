@@ -6,4 +6,4 @@ export {
   packRgba,
   type SamplePointRecord as ReferencePointRecord,
   type SeededRandomGenerator as ReferenceRandomGenerator,
-} from "../examples/data/sampleData";
+} from '../examples/data/sampleData'

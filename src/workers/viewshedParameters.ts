@@ -1,49 +1,47 @@
 export type ViewshedHeightParameters = {
-  collectorClearanceM: number;
-  obstructionHeightAglM: number;
-};
+  collectorClearanceM: number
+  obstructionHeightAglM: number
+}
 
 /** Interim AWS Terrarium surface policy: missing and bathymetric values use MSL. */
 export function visibleTerrainElevationM(elevationM: number): number {
-  return Number.isFinite(elevationM) ? Math.max(0, elevationM) : 0;
+  return Number.isFinite(elevationM) ? Math.max(0, elevationM) : 0
 }
 
 export function validateViewshedHeightParameters(
-  parameters: ViewshedHeightParameters,
+  parameters: ViewshedHeightParameters
 ): ViewshedHeightParameters {
   for (const [name, value] of Object.entries(parameters)) {
     if (!Number.isFinite(value) || value < 0) {
       throw new RangeError(
-        `${name} must be a finite, non-negative number of meters`,
-      );
+        `${name} must be a finite, non-negative number of meters`
+      )
     }
   }
-  return parameters;
+  return parameters
 }
 
 export function groundCollectorElevationM(
   bareEarthElevationM: number,
-  collectorClearanceM: number,
+  collectorClearanceM: number
 ): number {
-  return bareEarthElevationM + collectorClearanceM;
+  return bareEarthElevationM + collectorClearanceM
 }
 
 export function effectiveObserverElevationM(
-  kind: "ground" | "aircraft" | "geo" | "leo",
+  kind: 'ground' | 'aircraft' | 'geo' | 'leo',
   storedAltitudeM: number,
   bareEarthElevationM: number,
   collectorClearanceM: number,
-  highAltitudeThresholdM: number,
+  highAltitudeThresholdM: number
 ): number {
-  if (kind === "ground") {
-    return groundCollectorElevationM(bareEarthElevationM, collectorClearanceM);
+  if (kind === 'ground') {
+    return groundCollectorElevationM(bareEarthElevationM, collectorClearanceM)
   }
   return Math.max(
     storedAltitudeM || 0,
-    storedAltitudeM < highAltitudeThresholdM
-      ? bareEarthElevationM
-      : 0,
-  );
+    storedAltitudeM < highAltitudeThresholdM ? bareEarthElevationM : 0
+  )
 }
 
 /** The target remains bare-earth based; clutter is only an intervening surface. */
@@ -51,22 +49,22 @@ export function modeledProfileElevationM(
   bareEarthElevationM: number,
   sampleIndex: number,
   lastSampleIndex: number,
-  obstructionHeightAglM: number,
+  obstructionHeightAglM: number
 ): number {
-  const bareEarth = bareEarthElevationM;
+  const bareEarth = bareEarthElevationM
   return sampleIndex > 0 && sampleIndex < lastSampleIndex
     ? bareEarth + obstructionHeightAglM
-    : bareEarth;
+    : bareEarth
 }
 
 export function addObstructionHeightToDem(
   bareEarthElevationsM: Float64Array,
-  obstructionHeightAglM: number,
+  obstructionHeightAglM: number
 ): Float64Array {
   return Float64Array.from(
     bareEarthElevationsM,
-    (elevationM) => elevationM + obstructionHeightAglM,
-  );
+    (elevationM) => elevationM + obstructionHeightAglM
+  )
 }
 
 /**
@@ -78,19 +76,18 @@ export function addObstructionHeightToDem(
 export function effectiveMinimumVisibleAltitudeM(
   bareEarthElevationM: number,
   geometricMvaM: number,
-  terrainMvaM: number,
+  terrainMvaM: number
 ): number {
-  return Math.max(
-    bareEarthElevationM < 0 ? 0 : geometricMvaM,
-    terrainMvaM,
-  );
+  return Math.max(bareEarthElevationM < 0 ? 0 : geometricMvaM, terrainMvaM)
 }
 
 export function isProfileSampleBlocked(
   modeledTerrainElevationM: number,
   rayElevationM: number,
-  grazingToleranceM: number = 0.5,
+  grazingToleranceM: number = 0.5
 ): boolean {
-  return !Number.isFinite(rayElevationM) ||
-    modeledTerrainElevationM > rayElevationM + grazingToleranceM;
+  return (
+    !Number.isFinite(rayElevationM) ||
+    modeledTerrainElevationM > rayElevationM + grazingToleranceM
+  )
 }
