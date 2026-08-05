@@ -28,7 +28,7 @@ function regularPolygon(
 }
 
 /**
- * Returns the same pixel-space polygons as Qt example 05. A null polygon is
+ * Returns the same pixel-space polygons as Reference example 05. A null polygon is
  * the example's unmasked full rectangle.
  */
 export function polygonForMask(

@@ -20,9 +20,9 @@ import {
   Style,
 } from "ol/style.js";
 import {
-  installQtCoordinateDisplay,
-  type QtCoordinateDisplay,
-} from "../map/qtCoordinateDisplay";
+  installReferenceCoordinateDisplay,
+  type ReferenceCoordinateDisplay,
+} from "../map/referenceCoordinateDisplay";
 
 function landmarkStyle(color: string, stroke: string, radius: number): Style {
   return new Style({
@@ -98,7 +98,7 @@ export function MeasurementExampleApp() {
         zoom: 11,
       }),
     });
-    const coordinateDisplay = installQtCoordinateDisplay(
+    const coordinateDisplay = installReferenceCoordinateDisplay(
       map,
       mapTargetRef.current,
     );
@@ -145,17 +145,17 @@ export function MeasurementExampleApp() {
   };
 
   return (
-    <main className="qt-example-window">
+    <main className="reference-example-window">
       <section
-        className="qt-measurement-layout"
+        className="reference-measurement-layout"
         ref={layoutRef}
         style={{
           gridTemplateColumns:
             `minmax(500px, ${mapPercent}%) 6px minmax(280px, 1fr)`,
         }}
       >
-        <div className="qt-measurement-map-column">
-          <section className="qt-description-controls">
+        <div className="reference-measurement-map-column">
+          <section className="reference-description-controls">
             <p>
               Enable measurement mode and click on the map to add points. The
               side panel will show each segment distance and the running total.
@@ -177,10 +177,10 @@ export function MeasurementExampleApp() {
               Clear Measurements
             </button>
           </section>
-          <div className="qt-map-fill" ref={mapTargetRef} />
+          <div className="reference-map-fill" ref={mapTargetRef} />
         </div>
         <div
-          className="qt-column-separator"
+          className="reference-column-separator"
           role="separator"
           aria-label="Resize map and measurement summary"
           aria-orientation="vertical"
@@ -217,7 +217,7 @@ export function MeasurementExampleApp() {
             event.preventDefault();
           }}
         />
-        <aside className="qt-measurement-summary">
+        <aside className="reference-measurement-summary">
           <h2>Measurement Summary</h2>
           <p>Points: {rows.length}</p>
           <ol>
@@ -239,7 +239,7 @@ export function MeasurementExampleApp() {
 /** Browser port of examples/12_coordinate_display.py. */
 export function CoordinateDisplayExampleApp() {
   const mapTargetRef = useRef<HTMLDivElement>(null);
-  const coordinateDisplayRef = useRef<QtCoordinateDisplay | null>(null);
+  const coordinateDisplayRef = useRef<ReferenceCoordinateDisplay | null>(null);
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
@@ -272,7 +272,7 @@ export function CoordinateDisplayExampleApp() {
         zoom: 10,
       }),
     });
-    const coordinateDisplay = installQtCoordinateDisplay(
+    const coordinateDisplay = installReferenceCoordinateDisplay(
       map,
       mapTargetRef.current,
     );
@@ -285,8 +285,8 @@ export function CoordinateDisplayExampleApp() {
   }, []);
 
   return (
-    <main className="qt-example-window">
-      <section className="qt-coordinate-controls">
+    <main className="reference-example-window">
+      <section className="reference-coordinate-controls">
         <p>
           Move your mouse over the map to see coordinates in the lower-right
           corner. Use the button to toggle coordinate display on/off.
@@ -305,7 +305,7 @@ export function CoordinateDisplayExampleApp() {
           Coordinates shown: {visible ? "Enabled" : "Disabled"}
         </strong>
       </section>
-      <div className="qt-map-fill" ref={mapTargetRef} />
+      <div className="reference-map-fill" ref={mapTargetRef} />
     </main>
   );
 }
@@ -396,7 +396,7 @@ export function FitToDataExampleApp() {
       ],
       view: new View({center: fromLonLat([0, 20]), zoom: 2}),
     });
-    const coordinateDisplay = installQtCoordinateDisplay(
+    const coordinateDisplay = installReferenceCoordinateDisplay(
       map,
       mapTargetRef.current,
     );
@@ -461,8 +461,8 @@ export function FitToDataExampleApp() {
   };
 
   return (
-    <main className="qt-example-window">
-      <section className="qt-fit-controls">
+    <main className="reference-example-window">
+      <section className="reference-fit-controls">
         <button type="button" onClick={loadPoints}>Load Sample Data</button>
         <button type="button" onClick={fit}>Zoom to Loaded Data</button>
         <button type="button" onClick={loadRaster}>Load Raster</button>
@@ -480,7 +480,7 @@ export function FitToDataExampleApp() {
         </button>
         <span>{status}</span>
       </section>
-      <div className="qt-map-fill" ref={mapTargetRef} />
+      <div className="reference-map-fill" ref={mapTargetRef} />
     </main>
   );
 }

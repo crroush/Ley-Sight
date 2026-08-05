@@ -13,7 +13,7 @@ const POLYGON_MASKS: MaskShape[] = [
   "irregular",
 ];
 
-describe("Qt-compatible raster masks", () => {
+describe("Reference-compatible raster masks", () => {
   it("keeps each polygon center connected while excluding corners", () => {
     for (const mask of POLYGON_MASKS) {
       const polygon = polygonForMask(mask, 512, 512);
@@ -23,7 +23,7 @@ describe("Qt-compatible raster masks", () => {
     }
   });
 
-  it("uses the Qt star's alternating outer and inner radii", () => {
+  it("uses the Reference star's alternating outer and inner radii", () => {
     const star = polygonForMask("star", 512, 512);
     assert.ok(star);
     assert.equal(star.length, 10);

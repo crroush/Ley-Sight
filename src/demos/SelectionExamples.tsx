@@ -25,12 +25,12 @@ import {
   expandGradientCoordinates,
   renderedGradientValues,
 } from "../lib/gradientLine";
-import {installQtCoordinateDisplay} from "../map/qtCoordinateDisplay";
+import {installReferenceCoordinateDisplay} from "../map/referenceCoordinateDisplay";
 import {
   createEllipsePolygon,
-  createQtRandom,
-  createQtRandomGenerator,
-} from "./qtData";
+  createReferenceRandom,
+  createReferenceRandomGenerator,
+} from "./referenceData";
 
 function selectedGeometryStyle(feature: FeatureLike): Style | Style[] {
   const kind = String(feature.get("kind"));
@@ -171,7 +171,7 @@ function selectionSample() {
       pointFeature(37.3382, -121.8863, "vector_2", "vector", "crimson"),
     ],
   });
-  const fastGenerator = createQtRandomGenerator(42);
+  const fastGenerator = createReferenceRandomGenerator(42);
   const fastRandom = fastGenerator.random;
   const fastLatitudes = Array.from(
     {length: 100},
@@ -192,7 +192,7 @@ function selectionSample() {
       )
     ),
   });
-  const geoRandom = createQtRandom(43);
+  const geoRandom = createReferenceRandom(43);
   const geoLatitudes = Array.from(
     {length: 30},
     () => 37.6 + geoRandom() * 0.4,
@@ -251,7 +251,7 @@ export function FeatureSelectionExampleApp() {
         zoom: 10,
       }),
     });
-    const coordinates = installQtCoordinateDisplay(
+    const coordinates = installReferenceCoordinateDisplay(
       map,
       mapTargetRef.current,
     );
@@ -292,8 +292,8 @@ export function FeatureSelectionExampleApp() {
   }, [sample]);
 
   return (
-    <main className="qt-example-window">
-      <section className="qt-instruction-panel">
+    <main className="reference-example-window">
+      <section className="reference-instruction-panel">
         <p>
           Selection Instructions:<br />
           • Click on any point to select it<br />
@@ -303,7 +303,7 @@ export function FeatureSelectionExampleApp() {
         </p>
         <strong>{selectionText}</strong>
       </section>
-      <div className="qt-map-fill" ref={mapTargetRef} />
+      <div className="reference-map-fill" ref={mapTargetRef} />
     </main>
   );
 }
@@ -319,7 +319,7 @@ const RECOLOR_BUTTONS = [
   ["Cyan", "cyan"],
 ] as const;
 
-const QT_NAMED_RGB: Readonly<Record<string, readonly [number, number, number]>> = {
+const REFERENCE_NAMED_RGB: Readonly<Record<string, readonly [number, number, number]>> = {
   red: [255, 0, 0],
   green: [0, 128, 0],
   blue: [0, 0, 255],
@@ -330,8 +330,8 @@ const QT_NAMED_RGB: Readonly<Record<string, readonly [number, number, number]>> 
   cyan: [0, 255, 255],
 };
 
-function qtNamedColorWithOpacity(color: string, opacity: number): string {
-  const [red, green, blue] = QT_NAMED_RGB[color] ?? [0, 0, 0];
+function referenceNamedColorWithOpacity(color: string, opacity: number): string {
+  const [red, green, blue] = REFERENCE_NAMED_RGB[color] ?? [0, 0, 0];
   return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
 }
 
@@ -402,7 +402,7 @@ function recolorSample() {
   vectorFeatures.push(track);
   const vectorSource = new VectorSource({features: vectorFeatures});
 
-  const fastGenerator = createQtRandomGenerator(42);
+  const fastGenerator = createReferenceRandomGenerator(42);
   const fastRandom = fastGenerator.random;
   const fastLatitudes = Array.from(
     {length: 100},
@@ -430,7 +430,7 @@ function recolorSample() {
     }),
   });
 
-  const geoGenerator = createQtRandomGenerator(43);
+  const geoGenerator = createReferenceRandomGenerator(43);
   const geoRandom = geoGenerator.random;
   const geoLatitudes = Array.from(
     {length: 50},
@@ -518,7 +518,7 @@ export function SelectionRecolorExampleApp() {
         zoom: 10,
       }),
     });
-    const coordinates = installQtCoordinateDisplay(
+    const coordinates = installReferenceCoordinateDisplay(
       map,
       mapTargetRef.current,
     );
@@ -557,7 +557,7 @@ export function SelectionRecolorExampleApp() {
     }
     for (const feature of selected) {
       if (feature.get("kind") === "track") {
-        feature.set("colorOverride", qtNamedColorWithOpacity(color, 0.8));
+        feature.set("colorOverride", referenceNamedColorWithOpacity(color, 0.8));
       } else {
         feature.set("color", color);
       }
@@ -566,8 +566,8 @@ export function SelectionRecolorExampleApp() {
   };
 
   return (
-    <main className="qt-example-window">
-      <section className="qt-recolor-controls">
+    <main className="reference-example-window">
+      <section className="reference-recolor-controls">
         <strong>
           Select features (click or Ctrl+drag), including the gradient track,
           then click a color button to recolor them
@@ -586,7 +586,7 @@ export function SelectionRecolorExampleApp() {
         </div>
         <span>{selectionText}</span>
       </section>
-      <div className="qt-map-fill" ref={mapTargetRef} />
+      <div className="reference-map-fill" ref={mapTargetRef} />
     </main>
   );
 }

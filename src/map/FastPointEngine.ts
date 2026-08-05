@@ -42,9 +42,9 @@ import {
   selectExtentIntoMask,
 } from "./selectionIndex";
 import {
-  installQtCoordinateDisplay,
-  type QtCoordinateDisplay,
-} from "./qtCoordinateDisplay";
+  installReferenceCoordinateDisplay,
+  type ReferenceCoordinateDisplay,
+} from "./referenceCoordinateDisplay";
 import {modifierBoxSelection} from "./selectionInteractions";
 import {
   createPackagedCountryLayers,
@@ -134,7 +134,7 @@ export class FastPointEngine {
   private readonly dragBox: DragBox;
   private readonly managedLayers =
     new Map<string, TileLayer<XYZ | TileWMS>>();
-  private readonly coordinateDisplay: QtCoordinateDisplay;
+  private readonly coordinateDisplay: ReferenceCoordinateDisplay;
   private readonly countryLayers: PackagedCountryLayers;
   private x = new Float64Array();
   private y = new Float64Array();
@@ -227,7 +227,7 @@ export class FastPointEngine {
       interactions: defaultInteractions({shiftDragZoom: false}),
       view: new View({ center: fromLonLat([0, 18]), zoom: 2 }),
     });
-    this.coordinateDisplay = installQtCoordinateDisplay(
+    this.coordinateDisplay = installReferenceCoordinateDisplay(
       this.map,
       options.target,
     );

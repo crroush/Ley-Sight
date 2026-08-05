@@ -17,7 +17,7 @@ import {
   Style,
 } from "ol/style.js";
 import {createPackagedCountryLayers} from "../map/countryLayers";
-import {installQtCoordinateDisplay} from "../map/qtCoordinateDisplay";
+import {installReferenceCoordinateDisplay} from "../map/referenceCoordinateDisplay";
 
 type City = {
   latitude: number;
@@ -101,7 +101,7 @@ export function BasicMapExampleApp() {
         zoom: 6,
       }),
     });
-    const coordinates = installQtCoordinateDisplay(
+    const coordinates = installReferenceCoordinateDisplay(
       map,
       mapTargetRef.current,
     );
@@ -129,8 +129,8 @@ export function BasicMapExampleApp() {
   };
 
   return (
-    <main className="qt-example-window">
-      <section className="qt-controls-row" aria-label="Map controls">
+    <main className="reference-example-window">
+      <section className="reference-controls-row" aria-label="Map controls">
         <label>
           <input
             type="checkbox"
@@ -139,7 +139,7 @@ export function BasicMapExampleApp() {
           />
           Show country boundaries
         </label>
-        <label className="qt-inline-field">
+        <label className="reference-inline-field">
           <span>Stroke:</span>
           <button
             type="button"
@@ -150,7 +150,7 @@ export function BasicMapExampleApp() {
           <input
             ref={strokeInputRef}
             aria-label="Country boundary stroke color"
-            className="qt-hidden-color-input"
+            className="reference-hidden-color-input"
             type="color"
             value={strokeColor}
             onChange={(event) => {
@@ -160,7 +160,7 @@ export function BasicMapExampleApp() {
             }}
           />
           <span
-            className="qt-color-preview"
+            className="reference-color-preview"
             style={{backgroundColor: strokeColor}}
             aria-hidden="true"
           />
@@ -192,10 +192,10 @@ export function BasicMapExampleApp() {
           Black background
         </label>
         {boundaryError && (
-          <span className="qt-error" role="alert">{boundaryError}</span>
+          <span className="reference-error" role="alert">{boundaryError}</span>
         )}
       </section>
-      <div className="qt-map-fill" ref={mapTargetRef} />
+      <div className="reference-map-fill" ref={mapTargetRef} />
     </main>
   );
 }

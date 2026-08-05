@@ -26,7 +26,7 @@ created:
   workspace when both are hidden.
 - the default landing page launches independent CSV, vector, raster, filtering,
   linked-table, and map-event applications;
-- all numbered Qt use cases have source-level contracts and dedicated
+- all numbered reference use cases have source-level contracts and dedicated
   launcher links for the current parity pass.
 
 All application data stays in the current browser session. Network requests
@@ -84,3 +84,15 @@ replacement seven-million-point compact index without needing a browser. These
 are index benchmarks, not claims about CSV parsing or end-to-end performance
 on every browser and machine.
 
+
+## Reusable example recipes
+
+The legacy `src/demos/` entry files now stay as route-compatible re-exports, while reusable examples live under `src/examples/recipes/` and compose app-agnostic widgets from `src/widgets/`. Demo-only generators and reference seed data live in `src/examples/data/` so recipes can share fixtures without copying application infrastructure.
+
+| Recipe | Entry re-export | Widgets demonstrated | Minimum app scaffold |
+| --- | --- | --- | --- |
+| Filtering recipe | `FilteringDemoApp` | `VirtualDataTable`, split-pane/table/map composition, timeline-style range controls | Build rows with `src/examples/data/sampleData.ts`, pack them into `FastPointEngine`, then render a `VirtualDataTable` beside the map and pass table selection to `engine.selectIndices`. |
+| Table integration recipe | `TableIntegrationExampleApp` | `VirtualDataTable`, map/table linked selection, row context actions, layer-style controls | Keep a typed row array, derive map datasets from mapped rows, and use `VirtualDataTable` with stable row keys to synchronize table clicks and map selections. |
+| Linked table recipes | `DualTableLinkingExampleApp`, `MetadataOnlyLinkingExampleApp` | `VirtualDataTable`, reusable split pane separators, selection summaries between related tables | Model parent/child row ids, render each relation with `VirtualDataTable`, and translate selections through shared ids rather than rebuilding table infrastructure. |
+
+To start a new example app, import the reusable widgets from `src/widgets`, import any synthetic fixtures from `src/examples/data`, and add only the domain-specific state transitions in a new `src/examples/recipes/*RecipeApp.tsx` module. Keep the corresponding `src/demos/*` file as a one-line export when an existing route depends on the old name.

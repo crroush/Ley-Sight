@@ -11,12 +11,12 @@ import {fromLonLat} from "ol/proj.js";
 import {HistogramRange} from "../components/HistogramRange";
 import {buildFineTimeHistogram, formatFullTimestamp} from "../lib/timeHistogram";
 import {FastPointEngine} from "../map/FastPointEngine";
-import {createQtDataset, createQtRandom, packRgba} from "./qtData";
+import {createReferenceDataset, createReferenceRandom, packRgba} from "./referenceData";
 
 const VIRTUAL_ROW_COUNT = 250_000;
 
 /**
- * Qt example 19 deliberately exposes a quarter-million logical rows without
+ * Reference example 19 deliberately exposes a quarter-million logical rows without
  * materializing widgets for them. The browser version keeps the same model:
  * only the rows intersecting the scroll viewport are mounted.
  */
@@ -64,16 +64,16 @@ export function VirtualFeatureTableExampleApp() {
   };
 
   return (
-    <div className="qt-example-window qt-virtual-table-window">
-      <section className="qt-table-frame">
-        <div className="qt-table-header qt-virtual-columns">
+    <div className="reference-example-window reference-virtual-table-window">
+      <section className="reference-table-frame">
+        <div className="reference-table-header reference-virtual-columns">
           <span>Feature ID</span>
           <span>Value</span>
           <span>Bucket</span>
         </div>
-        <div className="qt-table-scroll" ref={scrollRef}>
+        <div className="reference-table-scroll" ref={scrollRef}>
           <div
-            className="qt-table-spacer"
+            className="reference-table-spacer"
             style={{height: virtualizer.getTotalSize()}}
           >
             {virtualizer.getVirtualItems().map((item) => {
@@ -81,7 +81,7 @@ export function VirtualFeatureTableExampleApp() {
               return (
                 <button
                   type="button"
-                  className={`qt-table-row qt-virtual-columns ${
+                  className={`reference-table-row reference-virtual-columns ${
                     selected.has(row) ? "is-selected" : ""
                   }`}
                   key={row}
@@ -97,7 +97,7 @@ export function VirtualFeatureTableExampleApp() {
           </div>
         </div>
       </section>
-      <p className="qt-table-status">
+      <p className="reference-table-status">
         {selected.size
           ? `Selected ${selected.size.toLocaleString()} rows: ${
               selectedPreview.join(", ")
@@ -106,7 +106,7 @@ export function VirtualFeatureTableExampleApp() {
       </p>
       <button
         type="button"
-        className="qt-wide-button"
+        className="reference-wide-button"
         onClick={() => {
           setSelected(new Set(Array.from({length: 11}, (_, index) => index + 10)));
           anchorRef.current = 10;
@@ -137,14 +137,14 @@ function normalRandom(random: () => number): number {
 }
 
 function buildActivityRecords(): ActivityRecord[] {
-  const random = createQtRandom(7);
+  const random = createReferenceRandom(7);
   const clusters = [
     {center: ACTIVITY_START + 2 * 86_400, weight: 0.35, name: "Early surge"},
     {center: ACTIVITY_START + 11 * 86_400, weight: 0.25, name: "Mid-month"},
     {center: ACTIVITY_START + 20 * 86_400, weight: 0.30, name: "Late surge"},
     {center: ACTIVITY_START + 28 * 86_400, weight: 0.10, name: "Cleanup"},
   ] as const;
-  // Keep the same vectorized RNG call order as the Qt source.
+  // Keep the same vectorized RNG call order as the Reference source.
   const latitudes = Array.from(
     {length: ACTIVITY_COUNT},
     () => 32 + random() * 15,
@@ -240,8 +240,8 @@ function ActivityTable({
   };
 
   return (
-    <section className="qt-table-frame">
-      <div className="qt-table-header qt-activity-columns">
+    <section className="reference-table-frame">
+      <div className="reference-table-header reference-activity-columns">
         {(["id", "activity", "time"] as const).map((column) => (
           <button type="button" key={column} onClick={() => changeSort(column)}>
             {column === "id" ? "ID" : column === "activity" ? "Activity" : "Timestamp"}
@@ -249,9 +249,9 @@ function ActivityTable({
           </button>
         ))}
       </div>
-      <div className="qt-table-scroll" ref={scrollRef}>
+      <div className="reference-table-scroll" ref={scrollRef}>
         <div
-          className="qt-table-spacer"
+          className="reference-table-spacer"
           style={{height: virtualizer.getTotalSize()}}
         >
           {virtualizer.getVirtualItems().map((item) => {
@@ -260,7 +260,7 @@ function ActivityTable({
             return (
               <button
                 type="button"
-                className={`qt-table-row qt-activity-columns ${
+                className={`reference-table-row reference-activity-columns ${
                   selected.has(index) ? "is-selected" : ""
                 }`}
                 key={index}
@@ -338,7 +338,7 @@ export function TimeHistogramExampleApp() {
       },
     });
     engineRef.current = engine;
-    const {dataset, summary} = createQtDataset(
+    const {dataset, summary} = createReferenceDataset(
       "Time histogram sample",
       records.map((record) => ({
         longitude: record.longitude,
@@ -391,16 +391,16 @@ export function TimeHistogramExampleApp() {
   };
 
   return (
-    <div className="qt-example-window qt-time-histogram-window">
-      <main className="qt-time-histogram-layout">
+    <div className="reference-example-window reference-time-histogram-window">
+      <main className="reference-time-histogram-layout">
         <ActivityTable
           rows={records}
           visibleIndices={visibleIndices}
           selected={selected}
           onSelect={selectRows}
         />
-        <section className="qt-time-map-column">
-          <div className="qt-map-fill" ref={mapRef} />
+        <section className="reference-time-map-column">
+          <div className="reference-map-fill" ref={mapRef} />
           <HistogramRange
             bins={histogram}
             minimum={timeMinimum}
@@ -412,13 +412,13 @@ export function TimeHistogramExampleApp() {
             onChange={(start, end) => setFilterRange([start, end])}
             onViewChange={(start, end) => setViewRange([start, end])}
           />
-          <p className="qt-time-info">
+          <p className="reference-time-info">
             Showing {visibleIndices.length.toLocaleString()} /{" "}
             {records.length.toLocaleString()} points | Hidden:{" "}
             {(records.length - visibleIndices.length).toLocaleString()} | Wheel
             over the plot to zoom and re-aggregate the histogram.
           </p>
-          <button type="button" className="qt-wide-button" onClick={reset}>
+          <button type="button" className="reference-wide-button" onClick={reset}>
             Reset Time Filter
           </button>
         </section>

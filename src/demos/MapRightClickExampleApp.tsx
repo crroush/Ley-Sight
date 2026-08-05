@@ -14,7 +14,7 @@ import {
   Stroke,
   Style,
 } from "ol/style.js";
-import {installQtCoordinateDisplay} from "../map/qtCoordinateDisplay";
+import {installReferenceCoordinateDisplay} from "../map/referenceCoordinateDisplay";
 
 type MenuState = {
   left: number;
@@ -73,7 +73,7 @@ export function MapRightClickExampleApp() {
         zoom: 11,
       }),
     });
-    const coordinates = installQtCoordinateDisplay(
+    const coordinates = installReferenceCoordinateDisplay(
       map,
       mapTargetRef.current,
     );
@@ -133,12 +133,12 @@ export function MapRightClickExampleApp() {
   };
 
   return (
-    <main className="qt-example-window">
-      <div className="qt-map-fill qt-context-map" ref={mapContainerRef}>
-        <div className="qt-map-target-fill" ref={mapTargetRef} />
+    <main className="reference-example-window">
+      <div className="reference-map-fill reference-context-map" ref={mapContainerRef}>
+        <div className="reference-map-target-fill" ref={mapTargetRef} />
         {menu && (
           <div
-            className="qt-context-menu"
+            className="reference-context-menu"
             style={{left: menu.left, top: menu.top}}
             role="menu"
           >

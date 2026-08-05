@@ -1,6 +1,6 @@
 export type ParityStatus = "available" | "partial" | "planned";
 
-export type QtSourceContract = {
+export type SourceContract = {
   sourcePath: string;
   window: string;
   data: string;
@@ -8,7 +8,7 @@ export type QtSourceContract = {
   interactions: readonly string[];
 };
 
-export type QtUseCase = {
+export type UseCase = {
   id: number;
   example: string;
   capability: string;
@@ -16,17 +16,17 @@ export type QtUseCase = {
   webSurface: string;
   href: string;
   remaining: string;
-  contract: QtSourceContract;
+  contract: SourceContract;
 };
 
 /**
  * Source-level inventory of every executable reference example.
  *
- * A use case is "available" only when its dedicated route preserves the Qt
+ * A use case is "available" only when its dedicated route preserves the reference
  * example's layout, defaults, sample scale, and user interactions. A grouped
  * demo that merely contains a related capability is never sufficient.
  */
-export const QT_USE_CASES: readonly QtUseCase[] = [
+export const USE_CASES: readonly UseCase[] = [
   {
     id: 1,
     example: "Basic map with markers",

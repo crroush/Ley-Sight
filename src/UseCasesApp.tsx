@@ -11,9 +11,9 @@ import {
   Construction,
 } from "lucide-react";
 import {
-  QT_USE_CASES,
+  REFERENCE_USE_CASES,
   type ParityStatus,
-} from "./demos/qtUseCases";
+} from "./demos/referenceUseCases";
 import "./styles.css";
 
 const STATUS_LABELS: Record<ParityStatus, string> = {
@@ -97,7 +97,7 @@ export function UseCasesApp() {
       <section className="app-launch-grid" aria-label="Example applications">
         {DEMO_APPS.map((app) => {
           const Icon = app.icon;
-          const useCaseCount = QT_USE_CASES.filter(
+          const useCaseCount = REFERENCE_USE_CASES.filter(
             (useCase) => useCase.href.split("?")[0] === app.href,
           ).length;
           return (
@@ -118,7 +118,7 @@ export function UseCasesApp() {
         <h2>Reference use cases 01–22</h2>
       </div>
       <section className="catalog-grid">
-        {QT_USE_CASES.map((useCase) => (
+        {REFERENCE_USE_CASES.map((useCase) => (
           <article className={`use-case-card status-${useCase.status}`} key={useCase.id}>
             <div className="use-case-heading">
               <span className="use-case-number">

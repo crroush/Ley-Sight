@@ -12,7 +12,7 @@ type RasterRequest = {
   width: number;
   height: number;
   mask: MaskShape;
-  profile?: "qt05" | "qt14" | "interrupt";
+  profile?: "reference05" | "reference14" | "interrupt";
   quality?: number;
   qLon?: number;
   qLat?: number;
@@ -30,7 +30,7 @@ type RasterResult = {
 const worker = self as DedicatedWorkerGlobalScope;
 let generation = 0;
 
-const QT05_X = [
+const REFERENCE05_X = [
   0.7739560485559633, 0.4388784397520523, 0.8585979199113825,
   0.6973680290593639, 0.09417734788764953, 0.9756223516367559,
   0.761139701990353, 0.7860643052769538, 0.12811363267554587,
@@ -39,7 +39,7 @@ const QT05_X = [
   0.2272387217847769, 0.5545847870158348, 0.06381725610417532,
   0.8276311719925821, 0.6316643991220649,
 ] as const;
-const QT05_Y = [
+const REFERENCE05_Y = [
   0.7580877400853738, 0.35452596812986836, 0.9706980243949033,
   0.8931211213221977, 0.7783834970737619, 0.19463870785196757,
   0.4667210037270342, 0.04380376578722878, 0.15428949206754783,
@@ -48,7 +48,7 @@ const QT05_Y = [
   0.1894713590842857, 0.12992150533547164, 0.47570492622593374,
   0.2269093490508841, 0.6698139946825103,
 ] as const;
-const QT05_VALUES = [
+const REFERENCE05_VALUES = [
   0.43715191887233074, 0.8326781960578374, 0.7002651020022491,
   0.31236664138204107, 0.8322598013952011, 0.8047643574968019,
   0.38747837903017446, 0.2883281039302441, 0.6824955039749755,
@@ -57,7 +57,7 @@ const QT05_VALUES = [
   0.7807290310219679, 0.45891577553833995, 0.5687411959528937,
   0.13979699812765745, 0.11453007353597344,
 ] as const;
-const QT05_COLORS = [
+const REFERENCE05_COLORS = [
   [68, 1, 84],
   [59, 82, 139],
   [33, 145, 140],
@@ -65,7 +65,7 @@ const QT05_COLORS = [
   [253, 231, 37],
 ] as const;
 
-function qt14Polygon(
+function reference14Polygon(
   width: number,
   height: number,
 ): readonly (readonly [number, number])[] {
@@ -93,7 +93,7 @@ function qt14Polygon(
   ] as const);
 }
 
-async function renderQt14(
+async function renderReference14(
   request: RasterRequest,
   token: number,
   started: number,
@@ -104,7 +104,7 @@ async function renderQt14(
   const qLon = Math.max(Number.EPSILON, request.qLon ?? 0.001);
   const qLat = Math.max(Number.EPSILON, request.qLat ?? 0.001);
 
-  // Qt starts with intentionally expensive native matrix work. This bounded
+  // Reference starts with intentionally expensive native matrix work. This bounded
   // warm-up preserves visible compute latency while the owning page can still
   // hard-interrupt it by terminating the worker.
   let accumulator = 0;
@@ -157,13 +157,13 @@ async function renderQt14(
 
   const pixels = new Uint8ClampedArray(width * height * 4);
   const scale = maximum > minimum ? 1 / (maximum - minimum) : 0;
-  const polygon = qt14Polygon(width, height);
+  const polygon = reference14Polygon(width, height);
   for (let y = 0; y < height; y += 1) {
     if (token !== generation) return;
     for (let x = 0; x < width; x += 1) {
       if (!insideMask(x, y, width, height, "irregular", polygon)) continue;
       const value = (values[y * width + x] - minimum) * scale;
-      const color = QT05_COLORS[
+      const color = REFERENCE05_COLORS[
         Math.max(0, Math.min(4, Math.trunc(value * 4)))
       ];
       const offset = (y * width + x) * 4;
@@ -184,7 +184,7 @@ async function renderQt14(
   } satisfies RasterResult, [pixels.buffer]);
 }
 
-async function renderQt05(
+async function renderReference05(
   request: RasterRequest,
   token: number,
   started: number,
@@ -196,11 +196,11 @@ async function renderQt05(
     if (token !== generation) return;
     for (let x = 0; x < request.width; x += 1) {
       let value = 0;
-      for (let point = 0; point < QT05_VALUES.length; point += 1) {
-        const deltaX = x - QT05_X[point] * request.width;
-        const deltaY = y - QT05_Y[point] * request.height;
+      for (let point = 0; point < REFERENCE05_VALUES.length; point += 1) {
+        const deltaX = x - REFERENCE05_X[point] * request.width;
+        const deltaY = y - REFERENCE05_Y[point] * request.height;
         const distance = Math.max(Math.hypot(deltaX, deltaY), 1);
-        value += QT05_VALUES[point] / (distance + 10);
+        value += REFERENCE05_VALUES[point] / (distance + 10);
       }
       const offset = y * request.width + x;
       values[offset] = value;
@@ -228,7 +228,7 @@ async function renderQt05(
         polygon,
       )) continue;
       const value = (values[y * request.width + x] - minimum) * scale;
-      const color = QT05_COLORS[
+      const color = REFERENCE05_COLORS[
         Math.max(0, Math.min(4, Math.trunc(value * 4)))
       ];
       const offset = (y * request.width + x) * 4;
@@ -255,12 +255,12 @@ async function renderRaster(
   token: number,
 ): Promise<void> {
   const started = performance.now();
-  if (request.profile === "qt05") {
-    await renderQt05(request, token, started);
+  if (request.profile === "reference05") {
+    await renderReference05(request, token, started);
     return;
   }
-  if (request.profile === "qt14") {
-    await renderQt14(request, token, started);
+  if (request.profile === "reference14") {
+    await renderReference14(request, token, started);
     return;
   }
   const pixels = new Uint8ClampedArray(

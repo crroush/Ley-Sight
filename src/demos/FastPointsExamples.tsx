@@ -2,14 +2,14 @@ import {useEffect, useMemo, useRef, useState} from "react";
 import {fromLonLat} from "ol/proj.js";
 import {FastPointEngine} from "../map/FastPointEngine";
 import {
-  createQtDataset,
-  createQtRandom,
+  createReferenceDataset,
+  createReferenceRandom,
   packRgba,
-  type QtPointRecord,
-} from "./qtData";
+  type ReferencePointRecord,
+} from "./referenceData";
 
 function useFastEngine(
-  records: readonly QtPointRecord[],
+  records: readonly ReferencePointRecord[],
   title: string,
   center: [number, number],
   zoom: number,
@@ -23,7 +23,7 @@ function useFastEngine(
     document.title = title;
     const engine = new FastPointEngine({target: mapTargetRef.current});
     engineRef.current = engine;
-    const {dataset, summary} = createQtDataset(title, records);
+    const {dataset, summary} = createReferenceDataset(title, records);
     engine.loadDataset(dataset, summary);
     engine.map.getView().setCenter(fromLonLat(center));
     engine.map.getView().setZoom(zoom);
@@ -40,13 +40,13 @@ function useFastEngine(
   return {mapTargetRef, engineRef};
 }
 
-function fastPerformanceRecords(): QtPointRecord[] {
-  const random = createQtRandom(42);
-  // Preserve the Qt source's vectorized draw order: all latitudes are drawn
+function fastPerformanceRecords(): ReferencePointRecord[] {
+  const random = createReferenceRandom(42);
+  // Preserve the Reference source's vectorized draw order: all latitudes are drawn
   // first, followed by all longitudes.
   const latitudes = Array.from({length: 10_000}, () => 32 + random() * 15);
   const longitudes = Array.from({length: 10_000}, () => -125 + random() * 15);
-  const records: QtPointRecord[] = [];
+  const records: ReferencePointRecord[] = [];
   for (let index = 0; index < 10_000; index += 1) {
     const latitude = latitudes[index];
     const ratio = (latitude - 32) / 15;
@@ -87,14 +87,14 @@ export function FastPointsPerformanceExampleApp() {
     configurePerformance,
   );
   return (
-    <main className="qt-example-window">
-      <div className="qt-map-fill" ref={mapTargetRef} />
+    <main className="reference-example-window">
+      <div className="reference-map-fill" ref={mapTargetRef} />
     </main>
   );
 }
 
-function uncertaintyRecords(): QtPointRecord[] {
-  const random = createQtRandom(42);
+function uncertaintyRecords(): ReferencePointRecord[] {
+  const random = createReferenceRandom(42);
   const latitudes = Array.from(
     {length: 50},
     () => 37.7749 + (random() - 0.5) * 0.1,
@@ -149,8 +149,8 @@ export function GeoUncertaintyExampleApp() {
   );
 
   return (
-    <main className="qt-example-window">
-      <section className="qt-description-controls">
+    <main className="reference-example-window">
+      <section className="reference-description-controls">
         <p>
           Click points to select them. Use the toggle to show/hide uncertainty
           ellipses.
@@ -167,7 +167,7 @@ export function GeoUncertaintyExampleApp() {
           {ellipsesVisible ? "Hide Ellipses" : "Show Ellipses"}
         </button>
       </section>
-      <div className="qt-map-fill" ref={mapTargetRef} />
+      <div className="reference-map-fill" ref={mapTargetRef} />
     </main>
   );
 }

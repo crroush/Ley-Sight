@@ -1,9 +1,9 @@
 import Polygon from "ol/geom/Polygon.js";
 import {fromLonLat} from "ol/proj.js";
-import type {DatasetSummary, PackedDataset} from "../lib/types";
-import {buildCompactSpatialIndex} from "../map/compactIndex";
+import type {DatasetSummary, PackedDataset} from "../../lib/types";
+import {buildCompactSpatialIndex} from "../../map/compactIndex";
 
-export type QtPointRecord = {
+export type SamplePointRecord = {
   longitude: number;
   latitude: number;
   time?: number;
@@ -19,7 +19,7 @@ const UINT64_MASK = (1n << 64n) - 1n;
 const UINT128_MASK = (1n << 128n) - 1n;
 
 /**
- * NumPy's SeedSequence-derived PCG64 states for the seeds used by the Qt
+ * NumPy's SeedSequence-derived PCG64 states for the seeds used by the reference
  * examples. Keeping these states in the browser makes every call to
  * `default_rng(seed).random()` byte-for-byte reproducible without shipping
  * generated coordinate fixtures.
@@ -55,7 +55,7 @@ const NUMPY_PCG64_STATES = new Map<number, readonly [bigint, bigint]>([
   ],
 ]);
 
-export type QtRandomGenerator = {
+export type SeededRandomGenerator = {
   random: () => number;
   integer: (minimum: number, maximumExclusive: number) => number;
 };
@@ -67,7 +67,7 @@ export type QtRandomGenerator = {
  * same 64-bit PCG64 stream. Preserving that buffer is necessary for examples
  * that interleave random coordinate arrays with `rng.integers(...)`.
  */
-export function createQtRandomGenerator(seed = 42): QtRandomGenerator {
+export function createSeededRandomGenerator(seed = 42): SeededRandomGenerator {
   const initial = NUMPY_PCG64_STATES.get(seed);
   if (!initial) {
     throw new Error(`No NumPy PCG64 state is registered for seed ${seed}.`);
@@ -133,8 +133,8 @@ export function createQtRandomGenerator(seed = 42): QtRandomGenerator {
  * Returns the same IEEE-754 doubles as
  * `np.random.default_rng(seed).random()`.
  */
-export function createQtRandom(seed = 42): () => number {
-  return createQtRandomGenerator(seed).random;
+export function createSeededRandom(seed = 42): () => number {
+  return createSeededRandomGenerator(seed).random;
 }
 
 export function packRgba(
@@ -151,9 +151,9 @@ export function packRgba(
   ) >>> 0;
 }
 
-export function createQtDataset(
+export function createSampleDataset(
   name: string,
-  records: readonly QtPointRecord[],
+  records: readonly SamplePointRecord[],
 ): {dataset: PackedDataset; summary: DatasetSummary} {
   const count = records.length;
   const x = new Float64Array(count);
