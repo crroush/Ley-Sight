@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import "ol/ol.css";
 import "./styles.css";
 import "./demos/demo.css";
-import { App } from "./App";
+import { CsvWorkspaceApp } from "./apps/csv/CsvWorkspaceApp";
 import {
   CoordinateDisplayExampleApp,
   FitToDataExampleApp,
@@ -26,7 +26,7 @@ function CsvEntry() {
   if (example === "15") return <FitToDataExampleApp />;
   if (example === "19") return <VirtualFeatureTableExampleApp />;
   if (example === "20") return <TimeHistogramExampleApp />;
-  return <App />;
+  return <CsvWorkspaceApp />;
 }
 
 createRoot(document.getElementById("root")!).render(

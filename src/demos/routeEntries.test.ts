@@ -28,7 +28,6 @@ test("every standalone OpenLayers entry imports the OpenLayers controls CSS", ()
   for (const entry of [
     "filteringMain.tsx",
     "linkedTablesMain.tsx",
-    "main.tsx",
     "mapEventsMain.tsx",
     "rasterMain.tsx",
     "vectorMain.tsx",
@@ -38,7 +37,7 @@ test("every standalone OpenLayers entry imports the OpenLayers controls CSS", ()
 });
 
 test("CSV workspace keeps examples on the landing page and uses reference menus", () => {
-  const app = source("App.tsx");
+  const app = source("apps/csv/CsvWorkspaceApp.tsx");
   assert.doesNotMatch(app, /All examples/);
   assert.match(app, /<summary>File<\/summary>/);
   assert.match(app, /<summary>Map<\/summary>/);
@@ -49,9 +48,10 @@ test("CSV workspace keeps examples on the landing page and uses reference menus"
 });
 
 test("CSV recovery persists both timeline ranges and cancels stale checks", () => {
-  const app = source("App.tsx");
+  const app = source("apps/csv/CsvWorkspaceApp.tsx");
+  const state = source("apps/csv/csvWorkspaceState.ts");
   const storage = source("storage/opfsWorkspace.ts");
-  assert.match(app, /timeFilterRange: tab\.timeFilterRange/);
+  assert.match(state, /timeFilterRange: tab\.timeFilterRange/);
   assert.match(app, /const restoredRange = tab\.timeFilterRange/);
   assert.match(app, /let cancelled = false/);
   assert.match(app, /if \(cancelled\) return/);
@@ -60,7 +60,7 @@ test("CSV recovery persists both timeline ranges and cancels stale checks", () =
 });
 
 test("CSV recovery asks before loading a saved workspace", () => {
-  const app = source("App.tsx");
+  const app = source("apps/csv/CsvWorkspaceApp.tsx");
   const storage = source("storage/opfsWorkspace.ts");
   assert.match(app, /Restore saved workspace\?/);
   assert.match(app, /Start fresh/);

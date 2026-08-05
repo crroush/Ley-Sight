@@ -1,3 +1,4 @@
+import React from "react";
 import assert from "node:assert/strict";
 import {afterEach, beforeEach, test} from "node:test";
 import {JSDOM} from "jsdom";
@@ -7,6 +8,7 @@ import {ModalDialog} from "./ModalDialog";
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "http://localhost/",
 });
+(globalThis as typeof globalThis & { React: typeof React }).React = React;
 Object.defineProperties(globalThis, {
   window: {value: dom.window, configurable: true},
   document: {value: dom.window.document, configurable: true},
