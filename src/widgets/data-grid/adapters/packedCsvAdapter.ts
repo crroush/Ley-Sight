@@ -166,6 +166,8 @@ export function usePackedCsvAdapter({
     () => ({
       rowCount: visibleIndices?.length ?? rowCount,
       rowIdAt: (position) => visibleIndices?.[position] ?? position,
+      positionOf: (index) =>
+        visibleIndices ? visibleIndices.indexOf(index) : index,
       revision: visibleIndices ?? rowCount,
       sort: async (
         request: DataGridSortRequest

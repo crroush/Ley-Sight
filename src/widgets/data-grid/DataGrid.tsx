@@ -28,6 +28,8 @@ export interface DataGridColumn<RowId> {
 export interface DataGridRowSource<RowId> {
   rowCount: number;
   rowIdAt: (position: number) => RowId;
+  /** Optional fast reverse lookup used to reveal map-driven selections. */
+  positionOf?: (rowId: RowId) => number;
   /** Change when the positional contents change without changing rowCount. */
   revision?: unknown;
   /** Optional capability. Large/packed sources can delegate this to a worker. */
@@ -120,11 +122,19 @@ export function DataGrid<RowId>({
 
   useEffect(() => {
     if (selection.focusRowId == null) return;
-    let position = -1;
-    for (let index = 0; index < count; index += 1) {
-      if (Object.is(rowIdAt(index), selection.focusRowId)) {
-        position = index;
-        break;
+    let position =
+      effectiveSortedRows == null
+        ? (rowSource.positionOf?.(selection.focusRowId) ?? -1)
+        : -1;
+    if (
+      position < 0 &&
+      (effectiveSortedRows != null || !rowSource.positionOf)
+    ) {
+      for (let index = 0; index < count; index += 1) {
+        if (Object.is(rowIdAt(index), selection.focusRowId)) {
+          position = index;
+          break;
+        }
       }
     }
     if (position < 0) return;
@@ -155,16 +165,12 @@ export function DataGrid<RowId>({
     try {
       const rows = rowSource.sort
         ? await rowSource.sort(request)
-        : Array.from({length: rowSource.rowCount}, (_, position) => ({
-            rowId: rowSource.rowIdAt(position),
-            position,
-          }))
+        : Array.from({length: rowSource.rowCount}, (_, position) => position)
             .sort((first, second) => {
-              const firstValue = column.sortValue!(first.rowId, first.position);
-              const secondValue = column.sortValue!(
-                second.rowId,
-                second.position
-              );
+              const firstRowId = rowSource.rowIdAt(first);
+              const secondRowId = rowSource.rowIdAt(second);
+              const firstValue = column.sortValue!(firstRowId, first);
+              const secondValue = column.sortValue!(secondRowId, second);
               const difference =
                 typeof firstValue === 'number' &&
                 typeof secondValue === 'number'
@@ -180,7 +186,7 @@ export function DataGrid<RowId>({
                 ? -difference
                 : difference;
             })
-            .map(({rowId}) => rowId);
+            .map((position) => rowSource.rowIdAt(position));
       if (revision === sortRevisionRef.current) {
         setSortedRows(rows);
         onPageChange?.(0);

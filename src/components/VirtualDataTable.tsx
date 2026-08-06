@@ -121,7 +121,7 @@ export function VirtualDataTable({
               : undefined,
           revision: selectionRevision,
         }}
-        className=""
+        className="data-grid-contents"
         headerClassName="data-grid-header"
         headerScrollClassName="data-grid-header-scroll"
         rowClassName="data-grid-row"
