@@ -1,26 +1,21 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {useVirtualizer} from "@tanstack/react-virtual";
+import {useEffect, useMemo, useRef, useState} from 'react';
+import {useVirtualizer} from '@tanstack/react-virtual';
 import {
   ArrowDown,
   ArrowUp,
   ChevronsUpDown,
   PanelBottomClose,
-} from "lucide-react";
+} from 'lucide-react';
 import type {
   CsvColumnMapping,
   PackedTableColumn,
   PackedTableData,
   TableRow,
-} from "../lib/types";
-import {tableSelectionRange} from "../lib/tableSelection";
-import type {FastPointEngine} from "../map/FastPointEngine";
+} from '../lib/types';
+import {tableSelectionRange} from '../lib/tableSelection';
+import type {FastPointEngine} from '../map/FastPointEngine';
 
-type SortDirection = "ascending" | "descending";
+type SortDirection = 'ascending' | 'descending';
 
 type SortState = {
   column: string;
@@ -49,19 +44,19 @@ type DisplayColumn = {
 };
 
 type TableSortResult = {
-  type: "result";
+  type: 'result';
   requestId: number;
   indices: Uint32Array<ArrayBuffer>;
   focusPosition: number;
 };
 
 const TABLE_PAGE_SIZE = 100_000;
-const SOURCE_INDEX_COLUMN = "__source_index__";
+const SOURCE_INDEX_COLUMN = '__source_index__';
 
 function formatNumber(value: number, digits = 3): string {
   return Number.isFinite(value)
     ? value.toLocaleString(undefined, {maximumFractionDigits: digits})
-    : "—";
+    : '—';
 }
 
 function displayWidth(column: string, mapping?: CsvColumnMapping): number {
@@ -80,14 +75,14 @@ function displayWidth(column: string, mapping?: CsvColumnMapping): number {
 function semanticValue(
   column: string,
   mapping: CsvColumnMapping | undefined,
-  row: TableRow,
+  row: TableRow
 ): string | undefined {
   if (column === mapping?.latitude) return formatNumber(row.latitude, 7);
   if (column === mapping?.longitude) return formatNumber(row.longitude, 7);
   if (column === mapping?.time) {
     return Number.isFinite(row.time)
       ? new Date(row.time * 1000).toISOString()
-      : "—";
+      : '—';
   }
   if (column === mapping?.semiMajor) return formatNumber(row.semiMajor, 3);
   if (column === mapping?.semiMinor) return formatNumber(row.semiMinor, 3);
@@ -97,18 +92,18 @@ function semanticValue(
 
 function customValue(
   column: PackedTableColumn | undefined,
-  index: number,
+  index: number
 ): string {
-  if (!column) return "—";
-  if (column.kind === "number") return formatNumber(column.values[index], 8);
-  return column.dictionary[column.codes[index]] ?? "";
+  if (!column) return '—';
+  if (column.kind === 'number') return formatNumber(column.values[index], 8);
+  return column.dictionary[column.codes[index]] ?? '';
 }
 
 function numericSortSource(
   column: string,
   mapping: CsvColumnMapping | undefined,
   engine: FastPointEngine,
-  rowCount: number,
+  rowCount: number
 ): {
   values: Float64Array<ArrayBuffer> | Float32Array<ArrayBuffer>;
   invert: boolean;
@@ -183,7 +178,7 @@ export function VirtualDataTable({
     () => [
       {
         key: SOURCE_INDEX_COLUMN,
-        label: "Source row",
+        label: 'Source row',
         width: 96,
       },
       ...columns.map((column) => ({
@@ -193,16 +188,18 @@ export function VirtualDataTable({
         width: displayWidth(column, mapping),
       })),
     ],
-    [columns, mapping],
+    [columns, mapping]
   );
   const customColumns = useMemo(
     () =>
       new Map(
-        (tableData?.columns ?? []).map((column) => [column.name, column]),
+        (tableData?.columns ?? []).map((column) => [column.name, column])
       ),
-    [tableData],
+    [tableData]
   );
-  const effectiveIndices = sort ? sortedIndices ?? visibleIndices : visibleIndices;
+  const effectiveIndices = sort
+    ? (sortedIndices ?? visibleIndices)
+    : visibleIndices;
   const count = effectiveIndices?.length ?? rowCount;
   const pageCount = Math.max(1, Math.ceil(count / TABLE_PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
@@ -210,7 +207,7 @@ export function VirtualDataTable({
   const pageLength = Math.min(TABLE_PAGE_SIZE, Math.max(0, count - pageStart));
   const gridWidth = displayColumns.reduce(
     (total, column) => total + column.width,
-    0,
+    0
   );
   const virtualizer = useVirtualizer({
     count: pageLength,
@@ -221,13 +218,13 @@ export function VirtualDataTable({
 
   useEffect(() => {
     const worker = new Worker(
-      new URL("../workers/tableSort.worker.ts", import.meta.url),
-      {type: "module"},
+      new URL('../workers/tableSort.worker.ts', import.meta.url),
+      {type: 'module'}
     );
     sortWorkerRef.current = worker;
     worker.onmessage = (event: MessageEvent<TableSortResult>) => {
       if (
-        event.data.type !== "result" ||
+        event.data.type !== 'result' ||
         event.data.requestId !== sortRequestIdRef.current
       ) {
         return;
@@ -298,12 +295,12 @@ export function VirtualDataTable({
     setSorting(true);
     sortWorkerRef.current.postMessage(
       {
-        type: "filter",
+        type: 'filter',
         requestId,
         focusIndex: engine?.selectionFocusIndex ?? -1,
         visibleIndices: visible,
       },
-      visible ? [visible.buffer] : [],
+      visible ? [visible.buffer] : []
     );
   }, [engine, visibleIndices]);
 
@@ -316,9 +313,9 @@ export function VirtualDataTable({
     const worker = sortWorkerRef.current;
     if (!worker || !engine || !rowCount) return;
     const direction: SortDirection =
-      sort?.column === column.key && sort.direction === "ascending"
-        ? "descending"
-        : "ascending";
+      sort?.column === column.key && sort.direction === 'ascending'
+        ? 'descending'
+        : 'ascending';
     const requestId = ++sortRequestIdRef.current;
     const visible = visibleIndices
       ? (visibleIndices.slice() as Uint32Array<ArrayBuffer>)
@@ -328,29 +325,35 @@ export function VirtualDataTable({
     setSorting(true);
 
     if (column.key === SOURCE_INDEX_COLUMN) {
-      worker.postMessage({
-        type: "sort-index",
-        requestId,
-        rowCount,
-        direction,
-        focusIndex: engine.selectionFocusIndex,
-        visibleIndices: visible,
-      }, transfer);
+      worker.postMessage(
+        {
+          type: 'sort-index',
+          requestId,
+          rowCount,
+          direction,
+          focusIndex: engine.selectionFocusIndex,
+          visibleIndices: visible,
+        },
+        transfer
+      );
       return;
     }
 
     const numeric = numericSortSource(column.key, mapping, engine, rowCount);
     if (numeric) {
       transfer.push(numeric.values.buffer);
-      worker.postMessage({
-        type: "sort-number",
-        requestId,
-        values: numeric.values,
-        direction,
-        invert: numeric.invert,
-        focusIndex: engine.selectionFocusIndex,
-        visibleIndices: visible,
-      }, transfer);
+      worker.postMessage(
+        {
+          type: 'sort-number',
+          requestId,
+          values: numeric.values,
+          direction,
+          invert: numeric.invert,
+          focusIndex: engine.selectionFocusIndex,
+          visibleIndices: visible,
+        },
+        transfer
+      );
       return;
     }
 
@@ -359,30 +362,36 @@ export function VirtualDataTable({
       setSorting(false);
       return;
     }
-    if (custom.kind === "number") {
+    if (custom.kind === 'number') {
       const values = custom.values.slice() as Float64Array<ArrayBuffer>;
       transfer.push(values.buffer);
-      worker.postMessage({
-        type: "sort-number",
-        requestId,
-        values,
-        direction,
-        invert: false,
-        visibleIndices: visible,
-      }, transfer);
+      worker.postMessage(
+        {
+          type: 'sort-number',
+          requestId,
+          values,
+          direction,
+          invert: false,
+          visibleIndices: visible,
+        },
+        transfer
+      );
       return;
     }
     const codes = custom.codes.slice() as Uint32Array<ArrayBuffer>;
     transfer.push(codes.buffer);
-    worker.postMessage({
-      type: "sort-category",
-      requestId,
-      codes,
-      dictionary: custom.dictionary,
-      direction,
-      focusIndex: engine.selectionFocusIndex,
-      visibleIndices: visible,
-    }, transfer);
+    worker.postMessage(
+      {
+        type: 'sort-category',
+        requestId,
+        codes,
+        dictionary: custom.dictionary,
+        direction,
+        focusIndex: engine.selectionFocusIndex,
+        visibleIndices: visible,
+      },
+      transfer
+    );
   };
 
   return (
@@ -399,9 +408,9 @@ export function VirtualDataTable({
           <strong>
             {count.toLocaleString()} visible
             <span className="muted">
-              {" · "}
+              {' · '}
               {(engine?.selectionCount ?? 0).toLocaleString()} selected
-              {sorting ? " · sorting…" : ""}
+              {sorting ? ' · sorting…' : ''}
             </span>
           </strong>
         </div>
@@ -411,7 +420,7 @@ export function VirtualDataTable({
               ? `Rows ${(pageStart + 1).toLocaleString()}–${(
                   pageStart + pageLength
                 ).toLocaleString()}`
-              : "No rows"}
+              : 'No rows'}
           </span>
           <span className="table-hint selection-hint">
             Shift: range · Ctrl/Cmd: toggle
@@ -449,13 +458,13 @@ export function VirtualDataTable({
               <button
                 key={column.key}
                 type="button"
-                className={active ? "is-sorted" : ""}
+                className={active ? 'is-sorted' : ''}
                 style={{width: column.width}}
-                aria-sort={active ? sort.direction : "none"}
+                aria-sort={active ? sort.direction : 'none'}
                 onClick={() => requestSort(column)}
               >
                 <span>{column.label}</span>
-                {active && sort.direction === "ascending" ? (
+                {active && sort.direction === 'ascending' ? (
                   <ArrowUp size={12} />
                 ) : active ? (
                   <ArrowDown size={12} />
@@ -497,25 +506,22 @@ export function VirtualDataTable({
                 <button
                   type="button"
                   key={sourceIndex}
-                  className={`data-grid-row ${isSelected ? "is-selected" : ""}`}
+                  className={`data-grid-row ${isSelected ? 'is-selected' : ''}`}
                   style={{
                     transform: `translateY(${virtualRow.start}px)`,
                     width: gridWidth,
                   }}
                   onClick={(event) => {
                     const toggle = event.ctrlKey || event.metaKey;
-                    if (
-                      event.shiftKey &&
-                      selectionAnchorRef.current != null
-                    ) {
+                    if (event.shiftKey && selectionAnchorRef.current != null) {
                       engine.selectIndices(
                         tableSelectionRange(
                           selectionAnchorRef.current,
                           rowPosition,
                           rowCount,
-                          effectiveIndices,
+                          effectiveIndices
                         ),
-                        !toggle,
+                        !toggle
                       );
                       return;
                     }
@@ -527,11 +533,11 @@ export function VirtualDataTable({
                     const value =
                       column.key === SOURCE_INDEX_COLUMN
                         ? sourceIndex.toLocaleString()
-                        : semanticValue(column.key, mapping, row) ??
+                        : (semanticValue(column.key, mapping, row) ??
                           customValue(
                             customColumns.get(column.key),
-                            sourceIndex,
-                          );
+                            sourceIndex
+                          ));
                     return (
                       <span key={column.key} style={{width: column.width}}>
                         {value}

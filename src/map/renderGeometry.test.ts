@@ -1,35 +1,35 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import ImageCanvasSource from "ol/source/ImageCanvas.js";
-import { fromLonLat, get as getProjection } from "ol/proj.js";
+import assert from 'node:assert/strict';
+import {describe, it} from 'node:test';
+import ImageCanvasSource from 'ol/source/ImageCanvas.js';
+import {fromLonLat, get as getProjection} from 'ol/proj.js';
 import {
   coordinateToImagePixel,
   imageCanvasPixelSize,
-} from "./imageCanvasGeometry";
-import { projectLonLatExact } from "./projection";
-import type { Extent } from "./quadtree";
+} from './imageCanvasGeometry';
+import {projectLonLatExact} from './projection';
+import type {Extent} from './quadtree';
 
-describe("OpenLayers image-canvas geometry", () => {
-  it("receives device-pixel dimensions from ImageCanvasSource", () => {
+describe('OpenLayers image-canvas geometry', () => {
+  it('receives device-pixel dimensions from ImageCanvasSource', () => {
     let receivedSize: [number, number] | null = null;
     const source = new ImageCanvasSource({
       ratio: 1,
-      projection: "EPSG:3857",
+      projection: 'EPSG:3857',
       canvasFunction: (_extent, _resolution, _pixelRatio, size) => {
         receivedSize = [size[0], size[1]];
-        return { width: size[0], height: size[1] } as HTMLCanvasElement;
+        return {width: size[0], height: size[1]} as HTMLCanvasElement;
       },
     });
     source.getImageInternal(
       [-400, -300, 400, 300],
       1,
       2,
-      getProjection("EPSG:3857")!,
+      getProjection('EPSG:3857')!
     );
     assert.deepEqual(receivedSize, [1_600, 1_200]);
   });
 
-  it("does not multiply an already device-pixel-sized image", () => {
+  it('does not multiply an already device-pixel-sized image', () => {
     const pixelRatio = 2;
     const cssSize: [number, number] = [800, 600];
     const sourceSize: [number, number] = [
@@ -44,11 +44,11 @@ describe("OpenLayers image-canvas geometry", () => {
     assert.deepEqual(centerPixel, [800, 600]);
     assert.deepEqual(
       centerPixel.map((value) => value / pixelRatio),
-      [400, 300],
+      [400, 300]
     );
   });
 
-  it("matches OpenLayers Web Mercator projection at known locations", () => {
+  it('matches OpenLayers Web Mercator projection at known locations', () => {
     const coordinates: Array<[number, number]> = [
       [0, 0],
       [-104.9903, 39.7392],

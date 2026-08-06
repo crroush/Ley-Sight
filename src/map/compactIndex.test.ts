@@ -1,21 +1,17 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import {
-  buildCompactSpatialIndex,
-  compactIndexBytes,
-} from "./compactIndex";
-import { WEB_MERCATOR_HALF_WORLD } from "./quadtree";
+import assert from 'node:assert/strict';
+import {describe, it} from 'node:test';
+import {buildCompactSpatialIndex, compactIndexBytes} from './compactIndex';
+import {WEB_MERCATOR_HALF_WORLD} from './quadtree';
 
-describe("compact spatial index", () => {
-  it("bulk-builds a complete Morton-ordered index", () => {
+describe('compact spatial index', () => {
+  it('bulk-builds a complete Morton-ordered index', () => {
     const count = 100_000;
     const x = new Float64Array(count);
     const y = new Float64Array(count);
     for (let index = 0; index < count; index += 1) {
-      x[index] = ((index % 1_000) / 999 * 2 - 1) * WEB_MERCATOR_HALF_WORLD;
+      x[index] = (((index % 1_000) / 999) * 2 - 1) * WEB_MERCATOR_HALF_WORLD;
       y[index] =
-        ((Math.floor(index / 1_000) / 99) * 2 - 1) *
-        WEB_MERCATOR_HALF_WORLD;
+        ((Math.floor(index / 1_000) / 99) * 2 - 1) * WEB_MERCATOR_HALF_WORLD;
     }
     const spatial = buildCompactSpatialIndex(x, y);
     assert.equal(spatial.order.length, count);
@@ -45,18 +41,19 @@ describe("compact spatial index", () => {
         }
         continue;
       }
-      assert.equal(
-        spatial.nodeStart[childIds[0]],
-        spatial.nodeStart[node],
-      );
+      assert.equal(spatial.nodeStart[childIds[0]], spatial.nodeStart[node]);
       assert.equal(
         spatial.nodeEnd[childIds[childIds.length - 1]],
-        spatial.nodeEnd[node],
+        spatial.nodeEnd[node]
       );
-      for (let childOffset = 1; childOffset < childIds.length; childOffset += 1) {
+      for (
+        let childOffset = 1;
+        childOffset < childIds.length;
+        childOffset += 1
+      ) {
         assert.equal(
           spatial.nodeStart[childIds[childOffset]],
-          spatial.nodeEnd[childIds[childOffset - 1]],
+          spatial.nodeEnd[childIds[childOffset - 1]]
         );
       }
     }
@@ -66,15 +63,15 @@ describe("compact spatial index", () => {
 
 const processEnv = (
   globalThis as typeof globalThis & {
-    process?: { env?: Record<string, string | undefined> };
+    process?: {env?: Record<string, string | undefined>};
   }
 ).process?.env;
 
 describe(
-  "seven-million-point compact index benchmark",
-  { skip: !processEnv?.RUN_SEVEN_MILLION_BENCHMARK },
+  'seven-million-point compact index benchmark',
+  {skip: !processEnv?.RUN_SEVEN_MILLION_BENCHMARK},
   () => {
-    it("bulk-builds seven million points", { timeout: 30_000 }, () => {
+    it('bulk-builds seven million points', {timeout: 30_000}, () => {
       const count = 7_000_000;
       const x = new Float64Array(count);
       const y = new Float64Array(count);
@@ -95,10 +92,10 @@ describe(
           compactIndexBytes(spatial) /
           1024 /
           1024
-        ).toFixed(1)} nodes=${spatial.nodeStart.length}`,
+        ).toFixed(1)} nodes=${spatial.nodeStart.length}`
       );
       assert.equal(spatial.order.length, count);
       assert.equal(spatial.nodeEnd[0], count);
     });
-  },
+  }
 );

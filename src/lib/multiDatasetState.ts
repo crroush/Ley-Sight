@@ -1,18 +1,21 @@
-import type {EngineDatasetState} from "./types";
-import {extendEngineState} from "./engineState";
+import type {EngineDatasetState} from './types';
+import {extendEngineState} from './engineState';
 
 type DatasetRows = {id: number; rowCount: number};
 
 export function splitCombinedEngineState(
   state: EngineDatasetState,
-  datasets: DatasetRows[],
+  datasets: DatasetRows[]
 ): Map<number, EngineDatasetState> {
   const result = new Map<number, EngineDatasetState>();
   let offset = 0;
   for (const dataset of datasets) {
     result.set(dataset.id, {
       visible: state.visible.slice(offset, offset + dataset.rowCount),
-      manualVisible: state.manualVisible?.slice(offset, offset + dataset.rowCount),
+      manualVisible: state.manualVisible?.slice(
+        offset,
+        offset + dataset.rowCount
+      ),
       deleted: state.deleted.slice(offset, offset + dataset.rowCount),
       selected: state.selected.slice(offset, offset + dataset.rowCount),
       timeRange: [...state.timeRange],
@@ -25,7 +28,7 @@ export function splitCombinedEngineState(
 export function composeCombinedEngineState(
   datasets: DatasetRows[],
   states: ReadonlyMap<number, EngineDatasetState>,
-  timeRange: [number, number],
+  timeRange: [number, number]
 ): EngineDatasetState {
   const rowCount = datasets.reduce((sum, dataset) => sum + dataset.rowCount, 0);
   const visible = new Uint8Array(rowCount);
@@ -45,5 +48,11 @@ export function composeCombinedEngineState(
     }
     offset += dataset.rowCount;
   }
-  return {visible, manualVisible, deleted, selected, timeRange: [...timeRange]};
+  return {
+    visible,
+    manualVisible,
+    deleted,
+    selected,
+    timeRange: [...timeRange],
+  };
 }

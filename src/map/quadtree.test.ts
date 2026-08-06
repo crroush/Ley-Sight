@@ -1,5 +1,5 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import assert from 'node:assert/strict';
+import {describe, it} from 'node:test';
 import {
   createRoot,
   insert,
@@ -7,11 +7,11 @@ import {
   projectLonLat,
   rebuildVisibility,
   type PointAccessor,
-} from "./quadtree";
+} from './quadtree';
 
-describe("quadtree", () => {
-  it("indexes, queries, and bulk-rebuilds visibility", () => {
-    const coordinates = Array.from({ length: 5_000 }, (_, index) => {
+describe('quadtree', () => {
+  it('indexes, queries, and bulk-rebuilds visibility', () => {
+    const coordinates = Array.from({length: 5_000}, (_, index) => {
       const longitude = -120 + (index % 100) * 0.01;
       const latitude = 35 + Math.floor(index / 100) * 0.01;
       return projectLonLat(longitude, latitude)!;
@@ -35,7 +35,7 @@ describe("quadtree", () => {
     assert.equal(root.visibleCount, 2_500);
   });
 
-  it("normalizes 0-360 longitudes and selects points in wrapped worlds", () => {
+  it('normalizes 0-360 longitudes and selects points in wrapped worlds', () => {
     const coordinate = projectLonLat(350, 10)!;
     const visible = new Uint8Array([1]);
     const accessor: PointAccessor = {
@@ -51,9 +51,9 @@ describe("quadtree", () => {
         root,
         accessor,
         [coordinate[0] + 40_075_016.68557849, coordinate[1]],
-        10,
+        10
       ),
-      0,
+      0
     );
   });
 });

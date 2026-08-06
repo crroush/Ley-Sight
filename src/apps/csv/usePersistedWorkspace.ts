@@ -1,4 +1,4 @@
-export type { PersistenceState } from "./csvWorkspaceState";
+export type {PersistenceState} from './csvWorkspaceState';
 
 // OPFS lifecycle wiring currently lives in CsvWorkspaceApp while the workspace is
 // being decomposed. This module is the extraction seam for the persisted

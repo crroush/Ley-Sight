@@ -1,5 +1,5 @@
-import type { ColorPalette } from "./colorPalettes";
-import type { ColorValueMode } from "./colorValueModes";
+import type {ColorPalette} from './colorPalettes';
+import type {ColorValueMode} from './colorValueModes';
 
 export type DatasetSummary = {
   name: string;
@@ -13,21 +13,19 @@ export type DatasetSummary = {
 };
 
 export type NumericTableColumn = {
-  kind: "number";
+  kind: 'number';
   name: string;
   values: Float64Array<ArrayBuffer>;
 };
 
 export type CategoricalTableColumn = {
-  kind: "category";
+  kind: 'category';
   name: string;
   codes: Uint32Array<ArrayBuffer>;
   dictionary: string[];
 };
 
-export type PackedTableColumn =
-  | NumericTableColumn
-  | CategoricalTableColumn;
+export type PackedTableColumn = NumericTableColumn | CategoricalTableColumn;
 
 /**
  * Compact storage for CSV fields that are not already present in the geometry
@@ -84,7 +82,14 @@ export type PackedDataset = {
 
 export type AppendableDataset = Pick<
   PackedDataset,
-  "x" | "y" | "semiMajor" | "semiMinor" | "rotation" | "time" | "colors" | "extent"
+  | 'x'
+  | 'y'
+  | 'semiMajor'
+  | 'semiMinor'
+  | 'rotation'
+  | 'time'
+  | 'colors'
+  | 'extent'
 > & {
   invalidRows: number;
   invalidTimestamps: number;
@@ -95,22 +100,22 @@ export type AppendableDataset = Pick<
 };
 
 export type WorkerProgress = {
-  phase: "generating" | "parsing" | "indexing" | "coloring";
+  phase: 'generating' | 'parsing' | 'indexing' | 'coloring';
   completed: number;
   total: number;
 };
 
 export type DataWorkerMessage =
-  | { type: "reset"; requestId: number }
+  | {type: 'reset'; requestId: number}
   | {
-      type: "generate";
+      type: 'generate';
       requestId: number;
       count: number;
       chunkSize: number;
       seed: number;
     }
   | {
-      type: "parse";
+      type: 'parse';
       requestId: number;
       files: File[];
       columns: CsvColumnMapping;
@@ -123,7 +128,7 @@ export type DataWorkerMessage =
       totalFileCount: number;
     }
   | {
-      type: "recolor";
+      type: 'recolor';
       requestId: number;
       files: File[];
       columns: CsvColumnMapping;
@@ -133,23 +138,23 @@ export type DataWorkerMessage =
     };
 
 export type DataWorkerEvent =
-  | { type: "reset"; requestId: number }
-  | { type: "progress"; requestId: number; progress: WorkerProgress }
+  | {type: 'reset'; requestId: number}
+  | {type: 'progress'; requestId: number; progress: WorkerProgress}
   | {
-      type: "complete";
+      type: 'complete';
       requestId: number;
       summary: DatasetSummary;
       dataset: PackedDataset;
       tableData?: PackedTableData;
     }
   | {
-      type: "recolored";
+      type: 'recolored';
       requestId: number;
       colorField: string;
       colors: Uint32Array<ArrayBuffer>;
     }
   | {
-      type: "error";
+      type: 'error';
       requestId: number;
       message: string;
       recoveredBase?: AppendableDataset;
@@ -168,13 +173,13 @@ export type CsvColumnMapping = {
 };
 
 export type TimestampInterpretation =
-  | "automatic"
-  | "iso"
-  | "unix-seconds"
-  | "unix-milliseconds"
-  | "unix-microseconds"
-  | "unix-nanoseconds"
-  | "excel-serial";
+  | 'automatic'
+  | 'iso'
+  | 'unix-seconds'
+  | 'unix-milliseconds'
+  | 'unix-microseconds'
+  | 'unix-nanoseconds'
+  | 'excel-serial';
 
 export type TableRow = {
   index: number;
@@ -189,7 +194,7 @@ export type TableRow = {
 export type BaseLayerDefinition = {
   id: string;
   name: string;
-  type: "osm" | "xyz";
+  type: 'osm' | 'xyz';
   url?: string;
   attribution?: string;
   maxZoom?: number;
@@ -198,7 +203,7 @@ export type BaseLayerDefinition = {
 export type ManagedLayerDefinition = {
   id: string;
   name: string;
-  type: "wms" | "xyz";
+  type: 'wms' | 'xyz';
   url: string;
   layers?: string;
   attribution?: string;

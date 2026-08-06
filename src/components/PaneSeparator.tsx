@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import {useRef} from 'react';
 
 type PaneSeparatorProps = {
   label: string;
@@ -6,11 +6,7 @@ type PaneSeparatorProps = {
   onStep: (deltaY: number) => void;
 };
 
-export function PaneSeparator({
-  label,
-  onDrag,
-  onStep,
-}: PaneSeparatorProps) {
+export function PaneSeparator({label, onDrag, onStep}: PaneSeparatorProps) {
   const originRef = useRef(0);
   const lastRef = useRef(0);
 
@@ -25,7 +21,7 @@ export function PaneSeparator({
         originRef.current = event.clientY;
         lastRef.current = 0;
         event.currentTarget.setPointerCapture(event.pointerId);
-        event.currentTarget.classList.add("is-dragging");
+        event.currentTarget.classList.add('is-dragging');
       }}
       onPointerMove={(event) => {
         if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
@@ -38,16 +34,16 @@ export function PaneSeparator({
         if (event.currentTarget.hasPointerCapture(event.pointerId)) {
           event.currentTarget.releasePointerCapture(event.pointerId);
         }
-        event.currentTarget.classList.remove("is-dragging");
+        event.currentTarget.classList.remove('is-dragging');
       }}
       onPointerCancel={(event) => {
-        event.currentTarget.classList.remove("is-dragging");
+        event.currentTarget.classList.remove('is-dragging');
       }}
       onKeyDown={(event) => {
-        if (event.key === "ArrowUp") {
+        if (event.key === 'ArrowUp') {
           event.preventDefault();
           onStep(-20);
-        } else if (event.key === "ArrowDown") {
+        } else if (event.key === 'ArrowDown') {
           event.preventDefault();
           onStep(20);
         }

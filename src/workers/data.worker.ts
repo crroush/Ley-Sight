@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import Papa from "papaparse";
+import Papa from 'papaparse';
 import type {
   AppendableDataset,
   CsvColumnMapping,
@@ -9,23 +9,21 @@ import type {
   DatasetSummary,
   PackedDataset,
   PackedTableData,
-} from "../lib/types";
-import { GrowableTypedArray } from "../map/growable";
-import { buildCompactSpatialIndex } from "../map/compactIndex";
-import { projectLatitude, projectLongitude, validateCoordinate } from "../map/projection";
-import { FieldColorBuilder } from "./fieldColors";
+} from '../lib/types';
+import {GrowableTypedArray} from '../map/growable';
+import {buildCompactSpatialIndex} from '../map/compactIndex';
 import {
-  gradientColor,
-  type ColorPalette,
-} from "../lib/colorPalettes";
-import type { ColorValueMode } from "../lib/colorValueModes";
-import { buildFineTimeHistogram } from "../lib/timeHistogram";
-import {mergePackedTableData} from "../lib/tableData";
-import {parseTimestamp} from "../lib/timestamps";
-import {
-  TableColumnBuilder,
-  tableColumnTransferList,
-} from "./tableColumns";
+  projectLatitude,
+  projectLongitude,
+  validateCoordinate,
+} from '../map/projection';
+import {FieldColorBuilder} from './fieldColors';
+import {gradientColor, type ColorPalette} from '../lib/colorPalettes';
+import type {ColorValueMode} from '../lib/colorValueModes';
+import {buildFineTimeHistogram} from '../lib/timeHistogram';
+import {mergePackedTableData} from '../lib/tableData';
+import {parseTimestamp} from '../lib/timestamps';
+import {TableColumnBuilder, tableColumnTransferList} from './tableColumns';
 
 const worker = self as DedicatedWorkerGlobalScope;
 let generation = 0;
@@ -58,31 +56,28 @@ function emitDataset(
   requestId: number,
   summary: DatasetSummary,
   dataset: PackedDataset,
-  tableData?: PackedTableData,
+  tableData?: PackedTableData
 ): void {
-  emit(
-    { type: "complete", requestId, summary, dataset, tableData },
-    [
-      dataset.x.buffer,
-      dataset.y.buffer,
-      dataset.semiMajor.buffer,
-      dataset.semiMinor.buffer,
-      dataset.rotation.buffer,
-      dataset.time.buffer,
-      dataset.colors.buffer,
-      dataset.timeHistogram.buffer,
-      dataset.index.order.buffer,
-      dataset.index.nodeStart.buffer,
-      dataset.index.nodeEnd.buffer,
-      dataset.index.nodeFirstIndex.buffer,
-      dataset.index.nodeChildren.buffer,
-      dataset.index.nodeMinX.buffer,
-      dataset.index.nodeMinY.buffer,
-      dataset.index.nodeMaxX.buffer,
-      dataset.index.nodeMaxY.buffer,
-      ...tableColumnTransferList(tableData?.columns ?? []),
-    ],
-  );
+  emit({type: 'complete', requestId, summary, dataset, tableData}, [
+    dataset.x.buffer,
+    dataset.y.buffer,
+    dataset.semiMajor.buffer,
+    dataset.semiMinor.buffer,
+    dataset.rotation.buffer,
+    dataset.time.buffer,
+    dataset.colors.buffer,
+    dataset.timeHistogram.buffer,
+    dataset.index.order.buffer,
+    dataset.index.nodeStart.buffer,
+    dataset.index.nodeEnd.buffer,
+    dataset.index.nodeFirstIndex.buffer,
+    dataset.index.nodeChildren.buffer,
+    dataset.index.nodeMinX.buffer,
+    dataset.index.nodeMinY.buffer,
+    dataset.index.nodeMaxX.buffer,
+    dataset.index.nodeMaxY.buffer,
+    ...tableColumnTransferList(tableData?.columns ?? []),
+  ]);
 }
 
 function mulberry32(seed: number): () => number {
@@ -113,23 +108,23 @@ function buildDataset(
   columns: PackedColumns,
   extent: [number, number, number, number],
   timeMin: number,
-  timeMax: number,
+  timeMax: number
 ): PackedDataset {
   emit({
-    type: "progress",
+    type: 'progress',
     requestId,
     progress: {
-      phase: "indexing",
+      phase: 'indexing',
       completed: 0,
       total: columns.x.length,
     },
   });
   const index = buildCompactSpatialIndex(columns.x, columns.y);
   emit({
-    type: "progress",
+    type: 'progress',
     requestId,
     progress: {
-      phase: "indexing",
+      phase: 'indexing',
       completed: columns.x.length,
       total: columns.x.length,
     },
@@ -147,7 +142,7 @@ async function generateSynthetic(
   count: number,
   chunkSize: number,
   seed: number,
-  token: number,
+  token: number
 ): Promise<void> {
   const random = mulberry32(seed);
   const startedAt = Date.UTC(2024, 0, 1) / 1000;
@@ -187,7 +182,7 @@ async function generateSynthetic(
       const longitude = cluster[0] + Math.cos(theta) * radius;
       const latitude = Math.max(
         -82,
-        Math.min(82, cluster[1] + Math.sin(theta) * radius * 0.68),
+        Math.min(82, cluster[1] + Math.sin(theta) * radius * 0.68)
       );
       const x = projectedX(longitude);
       const y = projectedY(latitude);
@@ -204,21 +199,21 @@ async function generateSynthetic(
       columns.time[index] = startedAt + random() * duration;
       columns.colors[index] = gradientColor(
         clusterIndex / Math.max(1, clusters.length - 1),
-        "turbo",
-        224,
+        'turbo',
+        224
       );
     }
     emit({
-      type: "progress",
+      type: 'progress',
       requestId,
-      progress: { phase: "generating", completed: end, total: count },
+      progress: {phase: 'generating', completed: end, total: count},
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
   if (token !== generation) return;
 
   const summary: DatasetSummary = {
-    name: "Synthetic geolocation lab",
+    name: 'Synthetic geolocation lab',
     rowCount: count,
     timeMin: startedAt,
     timeMax: startedAt + duration,
@@ -230,17 +225,15 @@ async function generateSynthetic(
   const dataset = buildDataset(
     requestId,
     columns,
-    count
-      ? [minX, minY, maxX, maxY]
-      : [0, 0, 0, 0],
+    count ? [minX, minY, maxX, maxY] : [0, 0, 0, 0],
     summary.timeMin,
-    summary.timeMax,
+    summary.timeMax
   );
   if (token === generation) emitDataset(requestId, summary, dataset);
 }
 
 function numeric(value: unknown, fallback = Number.NaN): number {
-  if (value == null || value === "") return fallback;
+  if (value == null || value === '') return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
@@ -262,7 +255,7 @@ function mergeColumn<T extends Float64Array | Float32Array | Uint32Array>(
   appended: T,
   Constructor: {
     new (length: number): T;
-  },
+  }
 ): T {
   if (!base?.length) return appended;
   if (!appended.length) return base;
@@ -283,7 +276,7 @@ async function parseFiles(
   totalFileCount: number,
   token: number,
   base?: AppendableDataset,
-  tableBase?: PackedTableData,
+  tableBase?: PackedTableData
 ): Promise<void> {
   const hasBase = Boolean(base?.x.length);
   let rowCount = base?.x.length ?? 0;
@@ -313,7 +306,7 @@ async function parseFiles(
       columns.semiMajor,
       columns.semiMinor,
       columns.tilt,
-    ].filter((column): column is string => typeof column === "string"),
+    ].filter((column): column is string => typeof column === 'string')
   );
   const tableBuilders = allTableColumns
     .filter((column) => !geometryColumns.has(column))
@@ -325,7 +318,7 @@ async function parseFiles(
       Papa.parse<Record<string, string>>(file, {
         header: true,
         transformHeader: (header) => header.trim(),
-        skipEmptyLines: "greedy",
+        skipEmptyLines: 'greedy',
         chunkSize: 4 * 1024 * 1024,
         chunk: (results, parser) => {
           if (token !== generation) {
@@ -337,28 +330,30 @@ async function parseFiles(
             const longitude = numeric(row[columns.longitude]);
             const latitude = numeric(row[columns.latitude]);
             const coordinate = validateCoordinate(longitude, latitude);
-            if (coordinate.status === "invalid") {
+            if (coordinate.status === 'invalid') {
               coordinateFailures += 1;
               continue;
             }
             if (coordinate.projectionClamped) projectionClampedRows += 1;
             const [x, y] = coordinate.projected;
             const timeValue = columns.time
-              ? parseTimestamp(row[columns.time], columns.timestampInterpretation)
+              ? parseTimestamp(
+                  row[columns.time],
+                  columns.timestampInterpretation
+                )
               : Number.NaN;
-            if (columns.time && !Number.isFinite(timeValue)) invalidTimestamps += 1;
+            if (columns.time && !Number.isFinite(timeValue))
+              invalidTimestamps += 1;
             values.x.push(x);
             values.y.push(y);
             values.semiMajor.push(
-              columns.semiMajor ? numeric(row[columns.semiMajor], 0) : 0,
+              columns.semiMajor ? numeric(row[columns.semiMajor], 0) : 0
             );
             values.semiMinor.push(
-              columns.semiMinor ? numeric(row[columns.semiMinor], 0) : 0,
+              columns.semiMinor ? numeric(row[columns.semiMinor], 0) : 0
             );
             values.rotation.push(
-              ellipseRotation(
-                columns.tilt ? numeric(row[columns.tilt], 0) : 0,
-              ),
+              ellipseRotation(columns.tilt ? numeric(row[columns.tilt], 0) : 0)
             );
             values.time.push(timeValue);
             for (const {name, builder} of tableBuilders) {
@@ -378,10 +373,10 @@ async function parseFiles(
           }
           const cursor = results.meta.cursor ?? 0;
           emit({
-            type: "progress",
+            type: 'progress',
             requestId,
             progress: {
-              phase: "parsing",
+              phase: 'parsing',
               completed: Math.min(totalBytes, completedBytes + cursor),
               total: totalBytes,
             },
@@ -415,43 +410,41 @@ async function parseFiles(
     x: mergeColumn(
       base?.x,
       values.x.view() as Float64Array<ArrayBuffer>,
-      Float64Array,
+      Float64Array
     ),
     y: mergeColumn(
       base?.y,
       values.y.view() as Float64Array<ArrayBuffer>,
-      Float64Array,
+      Float64Array
     ),
     semiMajor: mergeColumn(
       base?.semiMajor,
       values.semiMajor.view() as Float32Array<ArrayBuffer>,
-      Float32Array,
+      Float32Array
     ),
     semiMinor: mergeColumn(
       base?.semiMinor,
       values.semiMinor.view() as Float32Array<ArrayBuffer>,
-      Float32Array,
+      Float32Array
     ),
     rotation: mergeColumn(
       base?.rotation,
       values.rotation.view() as Float32Array<ArrayBuffer>,
-      Float32Array,
+      Float32Array
     ),
     time: mergeColumn(
       base?.time,
       values.time.view() as Float64Array<ArrayBuffer>,
-      Float64Array,
+      Float64Array
     ),
     colors: mergeColumn(base?.colors, appendedColors, Uint32Array),
   };
   const dataset = buildDataset(
     requestId,
     packed,
-    rowCount
-      ? [minX, minY, maxX, maxY]
-      : [0, 0, 0, 0],
+    rowCount ? [minX, minY, maxX, maxY] : [0, 0, 0, 0],
     summary.timeMin,
-    summary.timeMax,
+    summary.timeMax
   );
   const appendedTableData: PackedTableData = {
     rowCount: values.x.length,
@@ -470,7 +463,7 @@ async function recolorFiles(
   colorField: string,
   colorPalette: ColorPalette,
   colorValueMode: ColorValueMode,
-  token: number,
+  token: number
 ): Promise<void> {
   const totalBytes = files.reduce((total, file) => total + file.size, 0);
   let completedBytes = 0;
@@ -481,7 +474,7 @@ async function recolorFiles(
       Papa.parse<Record<string, string>>(file, {
         header: true,
         transformHeader: (header) => header.trim(),
-        skipEmptyLines: "greedy",
+        skipEmptyLines: 'greedy',
         chunkSize: 4 * 1024 * 1024,
         chunk: (results, parser) => {
           if (token !== generation) {
@@ -492,17 +485,18 @@ async function recolorFiles(
           for (const row of results.data) {
             const longitude = numeric(row[columns.longitude]);
             const latitude = numeric(row[columns.latitude]);
-            if (validateCoordinate(longitude, latitude).status === "invalid") continue;
+            if (validateCoordinate(longitude, latitude).status === 'invalid')
+              continue;
             fieldColors.push(row[colorField]);
           }
           emit({
-            type: "progress",
+            type: 'progress',
             requestId,
             progress: {
-              phase: "coloring",
+              phase: 'coloring',
               completed: Math.min(
                 totalBytes,
-                completedBytes + (results.meta.cursor ?? 0),
+                completedBytes + (results.meta.cursor ?? 0)
               ),
               total: totalBytes,
             },
@@ -516,30 +510,27 @@ async function recolorFiles(
   }
   if (token !== generation) return;
   const colors = fieldColors.finish();
-  emit(
-    { type: "recolored", requestId, colorField, colors },
-    [colors.buffer],
-  );
+  emit({type: 'recolored', requestId, colorField, colors}, [colors.buffer]);
 }
 
 worker.onmessage = async (event: MessageEvent<DataWorkerMessage>) => {
   const message = event.data;
-  if (message.type === "reset") {
+  if (message.type === 'reset') {
     generation += 1;
-    emit({ type: "reset", requestId: message.requestId });
+    emit({type: 'reset', requestId: message.requestId});
     return;
   }
   const token = ++generation;
   try {
-    if (message.type === "generate") {
+    if (message.type === 'generate') {
       await generateSynthetic(
         message.requestId,
         message.count,
         message.chunkSize,
         message.seed,
-        token,
+        token
       );
-    } else if (message.type === "parse") {
+    } else if (message.type === 'parse') {
       await parseFiles(
         message.requestId,
         message.files,
@@ -551,9 +542,9 @@ worker.onmessage = async (event: MessageEvent<DataWorkerMessage>) => {
         message.totalFileCount,
         token,
         message.base,
-        message.tableBase,
+        message.tableBase
       );
-    } else if (message.type === "recolor") {
+    } else if (message.type === 'recolor') {
       await recolorFiles(
         message.requestId,
         message.files,
@@ -561,17 +552,16 @@ worker.onmessage = async (event: MessageEvent<DataWorkerMessage>) => {
         message.colorField,
         message.colorPalette,
         message.colorValueMode,
-        token,
+        token
       );
     }
   } catch (error) {
-    const recoveredBase =
-      message.type === "parse" ? message.base : undefined;
+    const recoveredBase = message.type === 'parse' ? message.base : undefined;
     const recoveredTableBase =
-      message.type === "parse" ? message.tableBase : undefined;
+      message.type === 'parse' ? message.tableBase : undefined;
     emit(
       {
-        type: "error",
+        type: 'error',
         requestId: message.requestId,
         message: error instanceof Error ? error.message : String(error),
         recoveredBase,
@@ -579,18 +569,20 @@ worker.onmessage = async (event: MessageEvent<DataWorkerMessage>) => {
       },
       recoveredBase || recoveredTableBase
         ? [
-            ...(recoveredBase ? [
-            recoveredBase.x.buffer,
-            recoveredBase.y.buffer,
-            recoveredBase.semiMajor.buffer,
-            recoveredBase.semiMinor.buffer,
-            recoveredBase.rotation.buffer,
-            recoveredBase.time.buffer,
-            recoveredBase.colors.buffer,
-            ] : []),
+            ...(recoveredBase
+              ? [
+                  recoveredBase.x.buffer,
+                  recoveredBase.y.buffer,
+                  recoveredBase.semiMajor.buffer,
+                  recoveredBase.semiMinor.buffer,
+                  recoveredBase.rotation.buffer,
+                  recoveredBase.time.buffer,
+                  recoveredBase.colors.buffer,
+                ]
+              : []),
             ...tableColumnTransferList(recoveredTableBase?.columns ?? []),
           ]
-        : [],
+        : []
     );
   }
 };

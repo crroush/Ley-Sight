@@ -1,7 +1,7 @@
-import Polygon from "ol/geom/Polygon.js";
-import {fromLonLat} from "ol/proj.js";
-import type {DatasetSummary, PackedDataset} from "../../lib/types";
-import {buildCompactSpatialIndex} from "../../map/compactIndex";
+import Polygon from 'ol/geom/Polygon.js';
+import {fromLonLat} from 'ol/proj.js';
+import type {DatasetSummary, PackedDataset} from '../../lib/types';
+import {buildCompactSpatialIndex} from '../../map/compactIndex';
 
 export type SamplePointRecord = {
   longitude: number;
@@ -13,8 +13,7 @@ export type SamplePointRecord = {
   color?: number;
 };
 
-const PCG64_MULTIPLIER =
-  47_026_247_687_942_121_848_144_207_491_837_523_525n;
+const PCG64_MULTIPLIER = 47_026_247_687_942_121_848_144_207_491_837_523_525n;
 const UINT64_MASK = (1n << 64n) - 1n;
 const UINT128_MASK = (1n << 128n) - 1n;
 
@@ -75,16 +74,14 @@ export function createSeededRandomGenerator(seed = 42): SeededRandomGenerator {
   let [state, increment] = initial;
   let bufferedUint32: number | null = null;
   const nextRaw = (): bigint => {
-    state =
-      (state * PCG64_MULTIPLIER + increment) &
-      UINT128_MASK;
+    state = (state * PCG64_MULTIPLIER + increment) & UINT128_MASK;
     const high = state >> 64n;
     const low = state & UINT64_MASK;
     const xorshifted = (high ^ low) & UINT64_MASK;
     const rotation = Number(state >> 122n) & 63;
     const value =
       ((xorshifted >> BigInt(rotation)) |
-        (xorshifted << BigInt((-rotation) & 63))) &
+        (xorshifted << BigInt(-rotation & 63))) &
       UINT64_MASK;
     return value;
   };
@@ -101,19 +98,18 @@ export function createSeededRandomGenerator(seed = 42): SeededRandomGenerator {
   };
 
   return {
-    random: () =>
-      Number(nextRaw() >> 11n) / 9_007_199_254_740_992,
+    random: () => Number(nextRaw() >> 11n) / 9_007_199_254_740_992,
     integer: (minimum, maximumExclusive) => {
       if (
         !Number.isSafeInteger(minimum) ||
         !Number.isSafeInteger(maximumExclusive) ||
         maximumExclusive <= minimum
       ) {
-        throw new Error("integer bounds must be safe integers with max > min");
+        throw new Error('integer bounds must be safe integers with max > min');
       }
       const range = maximumExclusive - minimum;
       if (range > 0x1_0000_0000) {
-        throw new Error("integer ranges larger than uint32 are unsupported");
+        throw new Error('integer ranges larger than uint32 are unsupported');
       }
       const rangeBigInt = BigInt(range);
       // Lemire's unbiased bounded-uint32 method, matching NumPy.
@@ -141,19 +137,20 @@ export function packRgba(
   red: number,
   green: number,
   blue: number,
-  alpha = 255,
+  alpha = 255
 ): number {
   return (
-    ((red & 255) << 24) |
-    ((green & 255) << 16) |
-    ((blue & 255) << 8) |
-    (alpha & 255)
-  ) >>> 0;
+    (((red & 255) << 24) |
+      ((green & 255) << 16) |
+      ((blue & 255) << 8) |
+      (alpha & 255)) >>>
+    0
+  );
 }
 
 export function createSampleDataset(
   name: string,
-  records: readonly SamplePointRecord[],
+  records: readonly SamplePointRecord[]
 ): {dataset: PackedDataset; summary: DatasetSummary} {
   const count = records.length;
   const x = new Float64Array(count);
@@ -178,10 +175,7 @@ export function createSampleDataset(
     y[index] = coordinate[1];
     semiMajor[index] = record.semiMajor ?? 0;
     semiMinor[index] = record.semiMinor ?? 0;
-    rotation[index] = (
-      (90 - (record.tilt ?? 0)) *
-      Math.PI
-    ) / 180;
+    rotation[index] = ((90 - (record.tilt ?? 0)) * Math.PI) / 180;
     time[index] = record.time ?? Number.NaN;
     colors[index] = record.color ?? packRgba(0, 128, 0);
     extent[0] = Math.min(extent[0], coordinate[0]);
@@ -229,7 +223,7 @@ export function createEllipsePolygon(
   semiMajor: number,
   semiMinor: number,
   tiltDegrees: number,
-  segments = 72,
+  segments = 72
 ): Polygon {
   const [centerX, centerY] = fromLonLat([longitude, latitude]);
   const tilt = ((90 - tiltDegrees) * Math.PI) / 180;

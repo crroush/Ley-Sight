@@ -1,5 +1,5 @@
-import type { CompactSpatialIndex } from "../lib/types";
-import { WEB_MERCATOR_HALF_WORLD, WEB_MERCATOR_WORLD } from "./quadtree";
+import type {CompactSpatialIndex} from '../lib/types';
+import {WEB_MERCATOR_HALF_WORLD, WEB_MERCATOR_WORLD} from './quadtree';
 
 const MORTON_BITS = 18;
 const MORTON_GRID_SIZE = 2 ** MORTON_BITS;
@@ -7,8 +7,7 @@ const DEFAULT_LEAF_CAPACITY = 32;
 
 function coordinateCell(value: number): number {
   const normalized =
-    ((value + WEB_MERCATOR_HALF_WORLD) / WEB_MERCATOR_WORLD) *
-    MORTON_GRID_SIZE;
+    ((value + WEB_MERCATOR_HALF_WORLD) / WEB_MERCATOR_WORLD) * MORTON_GRID_SIZE;
   return Math.max(0, Math.min(MORTON_GRID_SIZE - 1, Math.floor(normalized)));
 }
 
@@ -17,17 +16,14 @@ export function mortonCode(x: number, y: number): number {
   const yCell = coordinateCell(y);
   let code = 0;
   for (let bit = MORTON_BITS - 1; bit >= 0; bit -= 1) {
-    code =
-      code * 4 +
-      ((xCell >>> bit) & 1) +
-      (((yCell >>> bit) & 1) * 2);
+    code = code * 4 + ((xCell >>> bit) & 1) + ((yCell >>> bit) & 1) * 2;
   }
   return code;
 }
 
 function radixSort(
   codes: Float64Array<ArrayBuffer>,
-  order: Uint32Array<ArrayBuffer>,
+  order: Uint32Array<ArrayBuffer>
 ): void {
   const scratchCodes = new Float64Array(codes.length);
   const scratchOrder = new Uint32Array(order.length);
@@ -64,7 +60,7 @@ function lowerBound(
   values: Float64Array<ArrayBuffer>,
   start: number,
   end: number,
-  target: number,
+  target: number
 ): number {
   let low = start;
   let high = end;
@@ -85,10 +81,10 @@ type PendingNode = {
 export function buildCompactSpatialIndex(
   x: Float64Array<ArrayBuffer>,
   y: Float64Array<ArrayBuffer>,
-  leafCapacity = DEFAULT_LEAF_CAPACITY,
+  leafCapacity = DEFAULT_LEAF_CAPACITY
 ): CompactSpatialIndex {
   if (x.length !== y.length) {
-    throw new Error("Spatial coordinate arrays must have the same length.");
+    throw new Error('Spatial coordinate arrays must have the same length.');
   }
   const count = x.length;
   const codes = new Float64Array(count);
@@ -113,7 +109,7 @@ export function buildCompactSpatialIndex(
     minX: number,
     minY: number,
     maxX: number,
-    maxY: number,
+    maxY: number
   ): number => {
     const id = starts.length;
     starts.push(start);
@@ -132,17 +128,14 @@ export function buildCompactSpatialIndex(
     -WEB_MERCATOR_HALF_WORLD,
     -WEB_MERCATOR_HALF_WORLD,
     WEB_MERCATOR_HALF_WORLD,
-    WEB_MERCATOR_HALF_WORLD,
+    WEB_MERCATOR_HALF_WORLD
   );
-  const pending: PendingNode[] = [{ id: root, depth: 0, prefix: 0 }];
+  const pending: PendingNode[] = [{id: root, depth: 0, prefix: 0}];
   while (pending.length) {
     const current = pending.pop()!;
     const start = starts[current.id];
     const end = ends[current.id];
-    if (
-      end - start <= leafCapacity ||
-      current.depth >= MORTON_BITS
-    ) {
+    if (end - start <= leafCapacity || current.depth >= MORTON_BITS) {
       continue;
     }
 
@@ -173,7 +166,7 @@ export function buildCompactSpatialIndex(
         childMinX,
         childMinY,
         childMaxX,
-        childMaxY,
+        childMaxY
       );
       children[current.id * 4 + slot] = child;
       pending.push({

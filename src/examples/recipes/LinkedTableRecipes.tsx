@@ -5,25 +5,23 @@ import {
   useState,
   type ReactNode,
   type RefObject,
-} from "react";
-import {VirtualDataTable, type VirtualDataTableColumn} from "../../widgets/VirtualDataTable";
-import Feature from "ol/Feature.js";
-import Point from "ol/geom/Point.js";
-import VectorLayer from "ol/layer/Vector.js";
-import {fromLonLat} from "ol/proj.js";
-import VectorSource from "ol/source/Vector.js";
+} from 'react';
 import {
-  Circle as CircleStyle,
-  Fill,
-  Stroke,
-  Style,
-} from "ol/style.js";
-import {FastPointEngine} from "../../map/FastPointEngine";
+  VirtualDataTable,
+  type VirtualDataTableColumn,
+} from '../../widgets/VirtualDataTable';
+import Feature from 'ol/Feature.js';
+import Point from 'ol/geom/Point.js';
+import VectorLayer from 'ol/layer/Vector.js';
+import {fromLonLat} from 'ol/proj.js';
+import VectorSource from 'ol/source/Vector.js';
+import {Circle as CircleStyle, Fill, Stroke, Style} from 'ol/style.js';
+import {FastPointEngine} from '../../map/FastPointEngine';
 import {
   createSampleDataset,
   createSeededRandomGenerator,
   packRgba,
-} from "../data/sampleData";
+} from '../data/sampleData';
 
 type VirtualGridProps = {
   count: number;
@@ -42,11 +40,7 @@ type RowSeparatorProps = {
   setPercent: (percent: number) => void;
 };
 
-function RowSeparator({
-  containerRef,
-  percent,
-  setPercent,
-}: RowSeparatorProps) {
+function RowSeparator({containerRef, percent, setPercent}: RowSeparatorProps) {
   return (
     <div
       className="reference-row-separator"
@@ -56,31 +50,33 @@ function RowSeparator({
       tabIndex={0}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
-        event.currentTarget.classList.add("is-dragging");
+        event.currentTarget.classList.add('is-dragging');
       }}
       onPointerMove={(event) => {
         if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
         const bounds = containerRef.current?.getBoundingClientRect();
         if (!bounds || bounds.height <= 0) return;
-        setPercent(Math.max(
-          30,
-          Math.min(78, ((event.clientY - bounds.top) / bounds.height) * 100),
-        ));
+        setPercent(
+          Math.max(
+            30,
+            Math.min(78, ((event.clientY - bounds.top) / bounds.height) * 100)
+          )
+        );
       }}
       onPointerUp={(event) => {
         if (event.currentTarget.hasPointerCapture(event.pointerId)) {
           event.currentTarget.releasePointerCapture(event.pointerId);
         }
-        event.currentTarget.classList.remove("is-dragging");
+        event.currentTarget.classList.remove('is-dragging');
       }}
       onPointerCancel={(event) =>
-        event.currentTarget.classList.remove("is-dragging")
+        event.currentTarget.classList.remove('is-dragging')
       }
       onKeyDown={(event) => {
-        if (event.key === "ArrowUp") {
+        if (event.key === 'ArrowUp') {
           event.preventDefault();
           setPercent(Math.max(30, percent - 2));
-        } else if (event.key === "ArrowDown") {
+        } else if (event.key === 'ArrowDown') {
           event.preventDefault();
           setPercent(Math.min(78, percent + 2));
         }
@@ -99,15 +95,19 @@ function VirtualGrid({
   selected,
   onSelection,
 }: VirtualGridProps) {
-  const rows = useMemo(() => Array.from({length: count}, (_, row) => row), [count]);
+  const rows = useMemo(
+    () => Array.from({length: count}, (_, row) => row),
+    [count]
+  );
   const tableColumns = useMemo<readonly VirtualDataTableColumn<number>[]>(
-    () => headings.map((heading, column) => ({
-      key: column,
-      heading,
-      sortValue: (row) => sortValues[column](row),
-      render: (row) => cells(row)[column],
-    })),
-    [cells, headings, sortValues],
+    () =>
+      headings.map((heading, column) => ({
+        key: column,
+        heading,
+        sortValue: (row) => sortValues[column](row),
+        render: (row) => cells(row)[column],
+      })),
+    [cells, headings, sortValues]
   );
   return (
     <VirtualDataTable
@@ -123,16 +123,16 @@ function VirtualGrid({
 }
 
 const REGION_SEEDS = [
-  ["West", "Operations", 34.05, -118.24],
-  ["Mountain", "Logistics", 39.74, -104.99],
-  ["Midwest", "Manufacturing", 41.88, -87.63],
-  ["East", "Sales", 40.71, -74],
-  ["Pacific NW", "Research", 47.61, -122.33],
-  ["Southwest", "Field", 33.45, -112.07],
-  ["Plains", "Supply", 39.1, -94.58],
-  ["Southeast", "Support", 33.75, -84.39],
-  ["Northeast", "Product", 42.36, -71.06],
-  ["South", "Delivery", 29.76, -95.36],
+  ['West', 'Operations', 34.05, -118.24],
+  ['Mountain', 'Logistics', 39.74, -104.99],
+  ['Midwest', 'Manufacturing', 41.88, -87.63],
+  ['East', 'Sales', 40.71, -74],
+  ['Pacific NW', 'Research', 47.61, -122.33],
+  ['Southwest', 'Field', 33.45, -112.07],
+  ['Plains', 'Supply', 39.1, -94.58],
+  ['Southeast', 'Support', 33.75, -84.39],
+  ['Northeast', 'Product', 42.36, -71.06],
+  ['South', 'Delivery', 29.76, -95.36],
 ] as const;
 
 const SITES_PER_REGION = 10_000;
@@ -149,7 +149,7 @@ type SiteData = {
 function buildSites(): SiteData {
   const generator = createSeededRandomGenerator(7);
   const random = generator.random;
-  const records: SiteData["records"] = [];
+  const records: SiteData['records'] = [];
   const scores = new Uint8Array(REGION_SEEDS.length * SITES_PER_REGION);
   let cursor = 0;
   for (const seed of REGION_SEEDS) {
@@ -184,19 +184,23 @@ export function DualTableLinkingExampleApp() {
   const syncingRef = useRef(false);
   const selectedRegionsRef = useRef(new Set([0]));
   const sites = useMemo(buildSites, []);
-  const [tab, setTab] = useState<"regions" | "sites">("regions");
-  const [selectedRegions, setSelectedRegions] = useState<Set<number>>(new Set([0]));
+  const [tab, setTab] = useState<'regions' | 'sites'>('regions');
+  const [selectedRegions, setSelectedRegions] = useState<Set<number>>(
+    new Set([0])
+  );
   const [selectedSites, setSelectedSites] = useState<Set<number>>(
-    new Set(Array.from({length: SITES_PER_REGION}, (_, index) => index)),
+    new Set(Array.from({length: SITES_PER_REGION}, (_, index) => index))
   );
   const [mapPercent, setMapPercent] = useState(66.67);
   selectedRegionsRef.current = selectedRegions;
 
   const setParentSelection = (
     rows: readonly number[],
-    additive = false,
+    additive = false
   ): void => {
-    const next = additive ? new Set(selectedRegionsRef.current) : new Set<number>();
+    const next = additive
+      ? new Set(selectedRegionsRef.current)
+      : new Set<number>();
     for (const row of rows) {
       if (additive && next.has(row)) next.delete(row);
       else next.add(row);
@@ -226,7 +230,7 @@ export function DualTableLinkingExampleApp() {
       },
     });
     engineRef.current = engine;
-    const {dataset, summary} = createSampleDataset("100k sites", sites.records);
+    const {dataset, summary} = createSampleDataset('100k sites', sites.records);
     engine.loadDataset(dataset, summary);
     engine.setPointStyle({
       radius: 3,
@@ -242,7 +246,7 @@ export function DualTableLinkingExampleApp() {
     const source = new VectorSource({
       features: REGION_SEEDS.map((seed, index) => {
         const feature = new Feature(new Point(fromLonLat([seed[3], seed[2]])));
-        feature.set("regionIndex", index);
+        feature.set('regionIndex', index);
         return feature;
       }),
     });
@@ -250,13 +254,13 @@ export function DualTableLinkingExampleApp() {
       source,
       style: (feature) => {
         const selected = selectedRegionsRef.current.has(
-          Number(feature.get("regionIndex")),
+          Number(feature.get('regionIndex'))
         );
         return new Style({
           image: new CircleStyle({
             radius: 12,
-            fill: new Fill({color: selected ? "yellow" : "crimson"}),
-            stroke: new Stroke({color: "darkred", width: 2}),
+            fill: new Fill({color: selected ? 'yellow' : 'crimson'}),
+            stroke: new Stroke({color: 'darkred', width: 2}),
           }),
         });
       },
@@ -264,19 +268,19 @@ export function DualTableLinkingExampleApp() {
     layer.setZIndex(20);
     regionLayerRef.current = layer;
     engine.map.addLayer(layer);
-    engine.map.on("singleclick", (event) => {
+    engine.map.on('singleclick', (event) => {
       const feature = engine.map.forEachFeatureAtPixel(
         event.pixel,
         (candidate) => candidate,
-        {layerFilter: (candidate) => candidate === layer},
+        {layerFilter: (candidate) => candidate === layer}
       );
       if (!feature) return;
-      setParentSelection([Number(feature.get("regionIndex"))], false);
+      setParentSelection([Number(feature.get('regionIndex'))], false);
     });
     syncingRef.current = true;
     engine.selectIndices(
       Array.from({length: SITES_PER_REGION}, (_, index) => index),
-      true,
+      true
     );
     syncingRef.current = false;
     const observer = new ResizeObserver(() => engine.map.updateSize());
@@ -304,14 +308,14 @@ export function DualTableLinkingExampleApp() {
       <p className="reference-link-info">
         <strong>Workflow:</strong> Selecting region(s) in Table 1 selects all
         corresponding sites in Table 2 and on the map. If you draw a subset
-        selection on the map, only Table 2 is highlighted and Table 1 is cleared.
+        selection on the map, only Table 2 is highlighted and Table 1 is
+        cleared.
       </p>
       <main
         className="reference-linked-layout"
         ref={layoutRef}
         style={{
-          gridTemplateRows:
-            `minmax(240px, ${mapPercent}%) 6px minmax(180px, 1fr)`,
+          gridTemplateRows: `minmax(240px, ${mapPercent}%) 6px minmax(180px, 1fr)`,
         }}
       >
         <div className="reference-map-fill" ref={mapRef} />
@@ -324,24 +328,24 @@ export function DualTableLinkingExampleApp() {
           <div className="reference-tab-buttons">
             <button
               type="button"
-              className={tab === "regions" ? "is-active" : ""}
-              onClick={() => setTab("regions")}
+              className={tab === 'regions' ? 'is-active' : ''}
+              onClick={() => setTab('regions')}
             >
               Table 1: Regions (multi-select)
             </button>
             <button
               type="button"
-              className={tab === "sites" ? "is-active" : ""}
-              onClick={() => setTab("sites")}
+              className={tab === 'sites' ? 'is-active' : ''}
+              onClick={() => setTab('sites')}
             >
               Table 2: Sites (all visible, multi-select)
             </button>
           </div>
-          {tab === "regions" ? (
+          {tab === 'regions' ? (
             <VirtualGrid
               count={REGION_SEEDS.length}
               columns="1fr 1fr 1fr 0.7fr"
-              headings={["Region", "Region ID", "Category", "Sites"]}
+              headings={['Region', 'Region ID', 'Category', 'Sites']}
               rowKey={(row) => row}
               cells={(row) => [
                 REGION_SEEDS[row][0],
@@ -362,7 +366,7 @@ export function DualTableLinkingExampleApp() {
             <VirtualGrid
               count={sites.records.length}
               columns="1.2fr 1fr 0.8fr 0.5fr"
-              headings={["Site", "Site ID", "Region", "Score"]}
+              headings={['Site', 'Site ID', 'Region', 'Score']}
               rowKey={(row) => row}
               cells={(row) => {
                 const region = Math.floor(row / SITES_PER_REGION);
@@ -407,12 +411,16 @@ type ParentData = {
 function buildParentsAndMetadata(): ParentData {
   const generator = createSeededRandomGenerator(17);
   const random = generator.random;
-  const records: ParentData["records"] = [];
+  const records: ParentData['records'] = [];
   const region = new Uint8Array(100_000);
   const metaStart = new Uint32Array(100_001);
   const scores: number[] = [];
   let global = 0;
-  for (let regionIndex = 0; regionIndex < REGION_SEEDS.length; regionIndex += 1) {
+  for (
+    let regionIndex = 0;
+    regionIndex < REGION_SEEDS.length;
+    regionIndex += 1
+  ) {
     const seed = REGION_SEEDS[regionIndex];
     const localCount = 10_000;
     const latitudes = new Float64Array(localCount);
@@ -471,9 +479,9 @@ export function MetadataOnlyLinkingExampleApp() {
   const engineRef = useRef<FastPointEngine | null>(null);
   const syncingRef = useRef(false);
   const data = useMemo(buildParentsAndMetadata, []);
-  const [tab, setTab] = useState<"parents" | "metadata">("parents");
+  const [tab, setTab] = useState<'parents' | 'metadata'>('parents');
   const [selectedParents, setSelectedParents] = useState<Set<number>>(
-    new Set([0, 1, 2, 3, 4]),
+    new Set([0, 1, 2, 3, 4])
   );
   const [selectedMetadata, setSelectedMetadata] = useState<Set<number>>(() => {
     const selected = new Set<number>();
@@ -482,7 +490,8 @@ export function MetadataOnlyLinkingExampleApp() {
         let row = data.metaStart[parent];
         row < data.metaStart[parent + 1];
         row += 1
-      ) selected.add(row);
+      )
+        selected.add(row);
     }
     return selected;
   });
@@ -495,7 +504,8 @@ export function MetadataOnlyLinkingExampleApp() {
         let row = data.metaStart[parent];
         row < data.metaStart[parent + 1];
         row += 1
-      ) output.add(row);
+      )
+        output.add(row);
     }
     return output;
   };
@@ -512,7 +522,10 @@ export function MetadataOnlyLinkingExampleApp() {
       },
     });
     engineRef.current = engine;
-    const {dataset, summary} = createSampleDataset("100k parent geos", data.records);
+    const {dataset, summary} = createSampleDataset(
+      '100k parent geos',
+      data.records
+    );
     engine.loadDataset(dataset, summary);
     engine.setPointStyle({
       radius: 2.5,
@@ -578,8 +591,7 @@ export function MetadataOnlyLinkingExampleApp() {
         className="reference-linked-layout"
         ref={layoutRef}
         style={{
-          gridTemplateRows:
-            `minmax(240px, ${mapPercent}%) 6px minmax(180px, 1fr)`,
+          gridTemplateRows: `minmax(240px, ${mapPercent}%) 6px minmax(180px, 1fr)`,
         }}
       >
         <div className="reference-map-fill" ref={mapRef} />
@@ -592,24 +604,24 @@ export function MetadataOnlyLinkingExampleApp() {
           <div className="reference-tab-buttons">
             <button
               type="button"
-              className={tab === "parents" ? "is-active" : ""}
-              onClick={() => setTab("parents")}
+              className={tab === 'parents' ? 'is-active' : ''}
+              onClick={() => setTab('parents')}
             >
               Table 1: Parent geos (100k)
             </button>
             <button
               type="button"
-              className={tab === "metadata" ? "is-active" : ""}
-              onClick={() => setTab("metadata")}
+              className={tab === 'metadata' ? 'is-active' : ''}
+              onClick={() => setTab('metadata')}
             >
               Table 2: Metadata rows (no map geometry)
             </button>
           </div>
-          {tab === "parents" ? (
+          {tab === 'parents' ? (
             <VirtualGrid
               count={data.records.length}
               columns="0.8fr 0.7fr 0.8fr 0.8fr 0.6fr"
-              headings={["Geo ID", "Region", "Lat", "Lon", "Meta Rows"]}
+              headings={['Geo ID', 'Region', 'Lat', 'Lon', 'Meta Rows']}
               rowKey={(row) => row}
               cells={(row) => [
                 `geo_${row}`,
@@ -632,7 +644,14 @@ export function MetadataOnlyLinkingExampleApp() {
             <VirtualGrid
               count={data.metaScore.length}
               columns="1.3fr 0.8fr 0.8fr 0.8fr 0.5fr 0.6fr"
-              headings={["Meta ID", "Geo ID", "Type", "Status", "Score", "Owner"]}
+              headings={[
+                'Meta ID',
+                'Geo ID',
+                'Type',
+                'Status',
+                'Score',
+                'Owner',
+              ]}
               rowKey={(row) => row}
               cells={(row) => {
                 const parent = metadataParent(data.metaStart, row);
@@ -641,8 +660,8 @@ export function MetadataOnlyLinkingExampleApp() {
                 return [
                   `meta_geo_${parent}_${local}`,
                   `geo_${parent}`,
-                  ["inspection", "permit", "ticket", "asset"][local % 4],
-                  ["open", "in_progress", "closed"][(region + local) % 3],
+                  ['inspection', 'permit', 'ticket', 'asset'][local % 4],
+                  ['open', 'in_progress', 'closed'][(region + local) % 3],
                   data.metaScore[row],
                   `Team ${(region % 6) + 1}`,
                 ];
@@ -657,8 +676,8 @@ export function MetadataOnlyLinkingExampleApp() {
                 (row) => {
                   const parent = metadataParent(data.metaStart, row);
                   return (
-                    data.region[parent] + row - data.metaStart[parent]
-                  ) % 3;
+                    (data.region[parent] + row - data.metaStart[parent]) % 3
+                  );
                 },
                 (row) => data.metaScore[row],
                 (row) => {

@@ -1,4 +1,4 @@
-import {ArrowLeft, Home} from "lucide-react";
+import {ArrowLeft, Home} from 'lucide-react';
 
 type DemoHeaderProps = {
   title: string;
@@ -6,11 +6,7 @@ type DemoHeaderProps = {
   useCases: number[];
 };
 
-export function DemoHeader({
-  title,
-  description,
-  useCases,
-}: DemoHeaderProps) {
+export function DemoHeader({title, description, useCases}: DemoHeaderProps) {
   return (
     <header className="demo-header">
       <a className="demo-home-link" href="/">
@@ -25,7 +21,7 @@ export function DemoHeader({
       </div>
       <div className="demo-use-cases" aria-label="Covered reference examples">
         {useCases.map((id) => (
-          <span key={id}>REF {String(id).padStart(2, "0")}</span>
+          <span key={id}>REF {String(id).padStart(2, '0')}</span>
         ))}
       </div>
     </header>

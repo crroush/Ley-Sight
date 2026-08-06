@@ -26,11 +26,11 @@ export type PointAccessor = {
 
 export function projectLonLat(
   longitude: number,
-  rawLatitude: number,
+  rawLatitude: number
 ): [number, number] | null {
   if (!Number.isFinite(longitude) || !Number.isFinite(rawLatitude)) return null;
   const latitude = Math.max(-85.05112878, Math.min(85.05112878, rawLatitude));
-  const wrappedLongitude = ((longitude + 180) % 360 + 360) % 360 - 180;
+  const wrappedLongitude = ((((longitude + 180) % 360) + 360) % 360) - 180;
   const normalizedLongitude =
     wrappedLongitude === -180 && longitude > 0 ? 180 : wrappedLongitude;
   const x = normalizedLongitude * (WEB_MERCATOR_HALF_WORLD / 180);
@@ -50,7 +50,7 @@ export function createRoot(): QuadtreeNode {
     -WEB_MERCATOR_HALF_WORLD,
     WEB_MERCATOR_HALF_WORLD,
     WEB_MERCATOR_HALF_WORLD,
-    0,
+    0
   );
 }
 
@@ -59,7 +59,7 @@ function createNode(
   minY: number,
   maxX: number,
   maxY: number,
-  depth: number,
+  depth: number
 ): QuadtreeNode {
   return {
     minX,
@@ -97,7 +97,7 @@ function makeChildren(node: QuadtreeNode): QuadtreeNode[] {
 function insertNode(
   node: QuadtreeNode,
   index: number,
-  accessor: PointAccessor,
+  accessor: PointAccessor
 ): void {
   node.visibleCount += accessor.isVisible(index) ? 1 : 0;
   if (node.firstIndex < 0) node.firstIndex = index;
@@ -117,31 +117,32 @@ function insertNode(
     insertNode(
       children[childSlot(node, accessor.x(oldIndex), accessor.y(oldIndex))],
       oldIndex,
-      accessor,
+      accessor
     );
   }
   insertNode(
     children[childSlot(node, accessor.x(index), accessor.y(index))],
     index,
-    accessor,
+    accessor
   );
 }
 
 export function insert(
   root: QuadtreeNode,
   index: number,
-  accessor: PointAccessor,
+  accessor: PointAccessor
 ): void {
   insertNode(root, index, accessor);
 }
 
 export function rebuildVisibility(
   node: QuadtreeNode,
-  accessor: PointAccessor,
+  accessor: PointAccessor
 ): number {
   if (node.children) {
     let total = 0;
-    for (const child of node.children) total += rebuildVisibility(child, accessor);
+    for (const child of node.children)
+      total += rebuildVisibility(child, accessor);
     node.visibleCount = total;
     return total;
   }
@@ -163,18 +164,18 @@ export function intersects(node: QuadtreeNode, extent: Extent): boolean {
 export function pointInExtent(
   accessor: PointAccessor,
   index: number,
-  extent: Extent,
+  extent: Extent
 ): boolean {
   const x = accessor.x(index);
   const y = accessor.y(index);
-  return (
-    x >= extent[0] && x <= extent[2] && y >= extent[1] && y <= extent[3]
-  );
+  return x >= extent[0] && x <= extent[2] && y >= extent[1] && y <= extent[3];
 }
 
 export function wrapXForExtent(x: number, extent: Extent): number {
   const centerX = (extent[0] + extent[2]) * 0.5;
-  return x + Math.round((centerX - x) / WEB_MERCATOR_WORLD) * WEB_MERCATOR_WORLD;
+  return (
+    x + Math.round((centerX - x) / WEB_MERCATOR_WORLD) * WEB_MERCATOR_WORLD
+  );
 }
 
 export function renderQueryExtents(extent: Extent): Extent[] {
@@ -211,7 +212,7 @@ export function nearestPoint(
   root: QuadtreeNode,
   accessor: PointAccessor,
   coordinate: [number, number],
-  radius: number,
+  radius: number
 ): number {
   const extent: Extent = [
     coordinate[0] - radius,

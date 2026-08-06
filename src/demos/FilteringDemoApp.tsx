@@ -1,1 +1,1 @@
-export {FilteringDemoApp} from "../examples/recipes/FilteringRecipeApp";
+export {FilteringDemoApp} from '../examples/recipes/FilteringRecipeApp';

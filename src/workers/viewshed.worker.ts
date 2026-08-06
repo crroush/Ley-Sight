@@ -9,15 +9,15 @@ import {
   WGS84_A_M,
   WEB_MERCATOR_WORLD_WIDTH_M,
   GridSpec,
-} from "./grid";
-import { TerrariumTerrainProvider, terrainZoomForSpacing } from "./terrain";
+} from './grid';
+import {TerrariumTerrainProvider, terrainZoomForSpacing} from './terrain';
 import {
   addObstructionHeightToDem,
   effectiveMinimumVisibleAltitudeM,
   effectiveObserverElevationM,
   visibleTerrainElevationM,
   validateViewshedHeightParameters,
-} from "./viewshedParameters";
+} from './viewshedParameters';
 
 // ============================================================================
 // 1. WGS84 Constants & Geodesy / Coordinate Transformations
@@ -35,7 +35,7 @@ const MISSING_DEM_FALLBACK_M = 0.0;
 
 export interface CollectorState {
   name: string;
-  kind: "ground" | "aircraft" | "geo" | "leo";
+  kind: 'ground' | 'aircraft' | 'geo' | 'leo';
   positionEcefM: [number, number, number];
   altitudeM?: number;
 }
@@ -54,7 +54,7 @@ export interface ComputeViewshedPayload {
   heightPx: number;
   observers: Array<{
     name: string;
-    kind: "ground" | "aircraft" | "geo" | "leo";
+    kind: 'ground' | 'aircraft' | 'geo' | 'leo';
     latitude_deg: number;
     longitude_deg: number;
     altitude_m: number;
@@ -69,7 +69,7 @@ export interface ComputeViewshedPayload {
 }
 
 export interface ComputeViewshedRequest {
-  type: "COMPUTE_VIEWSHED";
+  type: 'COMPUTE_VIEWSHED';
   payload: ComputeViewshedPayload;
 }
 
@@ -305,9 +305,7 @@ function mvaTerrainFast(
   let x = (tRadius + baseElev) * tCosLatCosLon;
   let y = (tRadius + baseElev) * tCosLatSinLon;
   let z = (tRadiusE2 + baseElev) * tSinLat;
-  if (
-    elevationAnglesFast(obsX, obsY, obsZ, upX, upY, upZ, x, y, z) >= reqAngle
-  )
+  if (elevationAnglesFast(obsX, obsY, obsZ, upX, upY, upZ, x, y, z) >= reqAngle)
     return 0.0;
 
   x = (tRadius + baseElev + high) * tCosLatCosLon;
@@ -337,11 +335,11 @@ let latestRunId = -1;
 let lastYieldTime = 0;
 
 async function checkCancelAndYield(currentRunId: number) {
-  if (latestRunId !== currentRunId) throw new Error("CANCELLED");
+  if (latestRunId !== currentRunId) throw new Error('CANCELLED');
   const now = performance.now();
   if (now - lastYieldTime > 40) {
     await new Promise((r) => setTimeout(r, 0));
-    if (latestRunId !== currentRunId) throw new Error("CANCELLED");
+    if (latestRunId !== currentRunId) throw new Error('CANCELLED');
     lastYieldTime = performance.now();
   }
 }
@@ -367,10 +365,10 @@ class Profiler {
     const table: any = {};
     let total = 0;
     this.totals.forEach((time, label) => {
-      table[label] = { "Time (ms)": time.toFixed(2) };
+      table[label] = {'Time (ms)': time.toFixed(2)};
       total += time;
     });
-    table["Total Execution"] = { "Time (ms)": total.toFixed(2) };
+    table['Total Execution'] = {'Time (ms)': total.toFixed(2)};
     console.table(table);
     console.groupEnd();
   }
@@ -385,13 +383,12 @@ export function clampDemToVisibleSurface(elevationM: Float64Array) {
   for (let i = 0; i < elevationM.length; i++) {
     if (Number.isFinite(elevationM[i])) {
       surface[i] = visibleTerrainElevationM(elevationM[i]);
-    }
-    else {
+    } else {
       surface[i] = MISSING_DEM_FALLBACK_M;
       missingSampleCount++;
     }
   }
-  return { surface, missingSampleCount, sampleCount: elevationM.length };
+  return {surface, missingSampleCount, sampleCount: elevationM.length};
 }
 
 const terrainProvider = new TerrariumTerrainProvider();
@@ -490,7 +487,7 @@ function observerInclusiveAnalysisGrid(
       )
     )
   );
-  let limits = { fRow: 0, lRow: 0, fCol: 0, lCol: 0, rows: 0, cols: 0 };
+  let limits = {fRow: 0, lRow: 0, fCol: 0, lCol: 0, rows: 0, cols: 0};
 
   do {
     limits.fCol = Math.floor(minCol / scale) * scale;
@@ -672,7 +669,7 @@ async function gridHorizonSweep(
 // Main Worker Execution & Message Processing
 // ============================================================================
 self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
-  if (!event.data || event.data.type !== "COMPUTE_VIEWSHED") return;
+  if (!event.data || event.data.type !== 'COMPUTE_VIEWSHED') return;
 
   const payload: ComputeViewshedPayload = event.data.payload;
   const runId = payload.runId;
@@ -699,7 +696,7 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
       collectorClearanceM: 0,
       obstructionHeightAglM,
     });
-    profiler.start("Setup & Grid Generation");
+    profiler.start('Setup & Grid Generation');
     const safeWidth = Math.round(widthPx || 800);
     const safeHeight = Math.round(heightPx || 600);
     const grid = {
@@ -727,7 +724,7 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
     }[] = [];
     let terrainSampleCount = 0;
     let missingTerrainSampleCount = 0;
-    profiler.end("Setup & Grid Generation");
+    profiler.end('Setup & Grid Generation');
 
     for (const idx of activeCollectorIndices) {
       await checkCancelAndYield(runId);
@@ -759,11 +756,7 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
         observer.antennaHeightAglM,
         HIGH_ALTITUDE_ANALYTIC_THRESHOLD_M
       );
-      const obsEcef = geodeticToEcef(
-        collectorLat,
-        collectorLon,
-        effectiveAltM
-      );
+      const obsEcef = geodeticToEcef(collectorLat, collectorLon, effectiveAltM);
 
       let viewportHorizonBefore,
         viewportDistances,
@@ -808,11 +801,13 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
         zoom
       );
       const sanitizedTerrain = clampDemToVisibleSurface(rawAnalysisTerrains);
-      const { surface: aTerrains } = sanitizedTerrain;
+      const {surface: aTerrains} = sanitizedTerrain;
       terrainSampleCount += sanitizedTerrain.sampleCount;
       missingTerrainSampleCount += sanitizedTerrain.missingSampleCount;
-      if (sanitizedTerrain.missingSampleCount === sanitizedTerrain.sampleCount) {
-        throw new Error("Terrain could not be loaded for the analysis area");
+      if (
+        sanitizedTerrain.missingSampleCount === sanitizedTerrain.sampleCount
+      ) {
+        throw new Error('Terrain could not be loaded for the analysis area');
       }
       const aObstructionTerrains = addObstructionHeightToDem(
         aTerrains,
@@ -899,12 +894,8 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
           analysisGrid.sourceColumnPositions
         );
 
-        viewportLatArr = new Float64Array(
-          (outputRows + 1) * (outputCols + 1)
-        );
-        viewportLonArr = new Float64Array(
-          (outputRows + 1) * (outputCols + 1)
-        );
+        viewportLatArr = new Float64Array((outputRows + 1) * (outputCols + 1));
+        viewportLonArr = new Float64Array((outputRows + 1) * (outputCols + 1));
         for (let r = 0; r <= outputRows; r++) {
           const yM = grid.yMinM + r * grid.cellYM;
           const lat = mercatorYToLat(yM);
@@ -1003,11 +994,11 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
               : 0;
         }
       }
-      observerResults.push({ idx, isVisible: obsVisArray, mva: obsMvaArray });
+      observerResults.push({idx, isVisible: obsVisArray, mva: obsMvaArray});
       profiler.end(`Observer ${idx} - Dual Bisection MVA Solvers`);
     }
 
-    profiler.start("RGBA Buffer Assembly");
+    profiler.start('RGBA Buffer Assembly');
     const buffer = new ArrayBuffer(numPixels * 4);
     const view = new Uint8ClampedArray(buffer);
 
@@ -1027,14 +1018,14 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
       }
 
       const drawBlocked =
-        viewQuestion === "coverage-any"
+        viewQuestion === 'coverage-any'
           ? visCount === 0
-          : viewQuestion === "coverage-all"
-          ? visCount < observerResults.length
-          : viewQuestion === "single" && singleDetail === "blocked"
-          ? targetVis === 0
-          : false;
-      const drawMva = viewQuestion === "single" && singleDetail === "mva";
+          : viewQuestion === 'coverage-all'
+            ? visCount < observerResults.length
+            : viewQuestion === 'single' && singleDetail === 'blocked'
+              ? targetVis === 0
+              : false;
+      const drawMva = viewQuestion === 'single' && singleDetail === 'mva';
 
       if (drawBlocked) {
         view[offset] = 183;
@@ -1054,15 +1045,15 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
         view[offset + 3] = 0;
       }
     }
-    profiler.end("RGBA Buffer Assembly");
+    profiler.end('RGBA Buffer Assembly');
     profiler.print(runId);
 
     self.postMessage(
       {
-        type: "COMPUTE_COMPLETE",
+        type: 'COMPUTE_COMPLETE',
         payload: {
           runId,
-          status: "success",
+          status: 'success',
           buffer,
           nx: outputCols,
           ny: outputRows,
@@ -1072,23 +1063,23 @@ self.onmessage = async (event: MessageEvent<ComputeViewshedRequest>) => {
             degraded: missingTerrainSampleCount > 0,
             sampleCount: terrainSampleCount,
             missingSampleCount: missingTerrainSampleCount,
-            missingSamplePolicy: "sea-level",
-            negativeElevationPolicy: "clamp-to-sea-level",
+            missingSamplePolicy: 'sea-level',
+            negativeElevationPolicy: 'clamp-to-sea-level',
           },
         },
       },
       [buffer]
     );
   } catch (err: any) {
-    if (err.message === "CANCELLED") {
+    if (err.message === 'CANCELLED') {
       console.log(
         `[Viewshed Worker] Run ${runId} cancelled by a newer viewport event.`
       );
       return;
     }
-    console.error("Worker Computation Error:", err);
+    console.error('Worker Computation Error:', err);
     self.postMessage({
-      type: "COMPUTE_FAILED",
+      type: 'COMPUTE_FAILED',
       payload: {
         runId, // Add runId here so the frontend can check if this failure is obsolete
         error: err.message || String(err),

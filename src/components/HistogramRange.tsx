@@ -5,8 +5,8 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
-} from "react";
-import {PanelBottomClose} from "lucide-react";
+} from 'react';
+import {PanelBottomClose} from 'lucide-react';
 import {
   aggregateTimeHistogram,
   clampTimeRange,
@@ -14,7 +14,7 @@ import {
   formatTimeAxisTick,
   moveFixedTimeWindow,
   type TimeRange,
-} from "../lib/timeHistogram";
+} from '../lib/timeHistogram';
 
 type HistogramRangeProps = {
   bins: Uint32Array;
@@ -32,20 +32,20 @@ type HistogramRangeProps = {
 
 type DragState = {
   kind:
-    | "filter-start"
-    | "filter-end"
-    | "filter-window"
-    | "view-start"
-    | "view-end"
-    | "view-window";
+    | 'filter-start'
+    | 'filter-end'
+    | 'filter-window'
+    | 'view-start'
+    | 'view-end'
+    | 'view-window';
   originX: number;
   initial: TimeRange;
 };
 
 function tickValues(start: number, end: number): number[] {
   return Array.from(
-    { length: 5 },
-    (_, index) => start + (index / 4) * (end - start),
+    {length: 5},
+    (_, index) => start + (index / 4) * (end - start)
   );
 }
 
@@ -80,14 +80,14 @@ export function HistogramRange({
   const [plotWidth, setPlotWidth] = useState(480);
 
   useEffect(() => {
-    if (dragRef.current?.kind.startsWith("filter")) return;
+    if (dragRef.current?.kind.startsWith('filter')) return;
     filterDraftRef.current = [start, end];
     setDraftStart(start);
     setDraftEnd(end);
   }, [start, end]);
 
   useEffect(() => {
-    if (dragRef.current?.kind.startsWith("view")) return;
+    if (dragRef.current?.kind.startsWith('view')) return;
     viewDraftRef.current = [viewStart, viewEnd];
     setDraftViewStart(viewStart);
     setDraftViewEnd(viewEnd);
@@ -112,16 +112,9 @@ export function HistogramRange({
         maximum,
         draftViewStart,
         draftViewEnd,
-        Math.max(48, Math.min(360, Math.floor(plotWidth / 3))),
+        Math.max(48, Math.min(360, Math.floor(plotWidth / 3)))
       ),
-    [
-      bins,
-      minimum,
-      maximum,
-      draftViewStart,
-      draftViewEnd,
-      plotWidth,
-    ],
+    [bins, minimum, maximum, draftViewStart, draftViewEnd, plotWidth]
   );
 
   useEffect(() => {
@@ -131,14 +124,15 @@ export function HistogramRange({
     const ratio = window.devicePixelRatio || 1;
     canvas.width = Math.max(1, Math.round(bounds.width * ratio));
     canvas.height = Math.max(1, Math.round(bounds.height * ratio));
-    const context = canvas.getContext("2d");
+    const context = canvas.getContext('2d');
     if (!context) return;
     context.scale(ratio, ratio);
     context.clearRect(0, 0, bounds.width, bounds.height);
     let maximumCount = 1;
-    for (const count of displayBins) maximumCount = Math.max(maximumCount, count);
+    for (const count of displayBins)
+      maximumCount = Math.max(maximumCount, count);
     const width = bounds.width / Math.max(1, displayBins.length);
-    context.fillStyle = "#38bdf8";
+    context.fillStyle = '#38bdf8';
     for (let index = 0; index < displayBins.length; index += 1) {
       const height =
         (displayBins[index] / maximumCount) * Math.max(1, bounds.height - 7);
@@ -146,7 +140,7 @@ export function HistogramRange({
         index * width,
         bounds.height - height,
         Math.max(1, width - 1),
-        height,
+        height
       );
     }
   }, [displayBins]);
@@ -172,16 +166,16 @@ export function HistogramRange({
       (percent(draftEnd, draftViewStart, draftViewEnd) / 100) * bounds.width;
     const x = event.clientX - bounds.left;
     const hitWidth = 10;
-    let kind: DragState["kind"];
-    if (Math.abs(x - startX) <= hitWidth) kind = "filter-start";
-    else if (Math.abs(x - endX) <= hitWidth) kind = "filter-end";
+    let kind: DragState['kind'];
+    if (Math.abs(x - startX) <= hitWidth) kind = 'filter-start';
+    else if (Math.abs(x - endX) <= hitWidth) kind = 'filter-end';
     else if (x > Math.min(startX, endX) && x < Math.max(startX, endX)) {
-      kind = "filter-window";
+      kind = 'filter-window';
     } else {
       kind =
         Math.abs(x - startX) < Math.abs(x - endX)
-          ? "filter-start"
-          : "filter-end";
+          ? 'filter-start'
+          : 'filter-end';
     }
     dragRef.current = {
       kind,
@@ -193,54 +187,43 @@ export function HistogramRange({
 
   const movePlotDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
     const drag = dragRef.current;
-    if (!drag || !drag.kind.startsWith("filter")) return;
+    if (!drag || !drag.kind.startsWith('filter')) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const viewSpan = Math.max(Number.EPSILON, draftViewEnd - draftViewStart);
     const delta =
       ((event.clientX - drag.originX) / Math.max(1, bounds.width)) * viewSpan;
     const pointerRatio = Math.max(
       0,
-      Math.min(
-        1,
-        (event.clientX - bounds.left) / Math.max(1, bounds.width),
-      ),
+      Math.min(1, (event.clientX - bounds.left) / Math.max(1, bounds.width))
     );
     const pointerValue = draftViewStart + pointerRatio * viewSpan;
     const minimumStep = Math.max(
       0.001,
-      Math.min(1, (maximum - minimum) / 10_000),
+      Math.min(1, (maximum - minimum) / 10_000)
     );
-    if (drag.kind === "filter-window") {
+    if (drag.kind === 'filter-window') {
       setFilterDraft(
         moveFixedTimeWindow(
           drag.initial[0],
           drag.initial[1],
           delta,
           minimum,
-          maximum,
-        ),
+          maximum
+        )
       );
       return;
     }
     const value =
-      drag.kind === "filter-start"
-        ? Math.max(
-            minimum,
-            Math.min(pointerValue, draftEnd - minimumStep),
-          )
-        : Math.min(
-            maximum,
-            Math.max(pointerValue, draftStart + minimumStep),
-          );
+      drag.kind === 'filter-start'
+        ? Math.max(minimum, Math.min(pointerValue, draftEnd - minimumStep))
+        : Math.min(maximum, Math.max(pointerValue, draftStart + minimumStep));
     setFilterDraft(
-      drag.kind === "filter-start"
-        ? [value, draftEnd]
-        : [draftStart, value],
+      drag.kind === 'filter-start' ? [value, draftEnd] : [draftStart, value]
     );
   };
 
   const endPlotDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (!dragRef.current?.kind.startsWith("filter")) return;
+    if (!dragRef.current?.kind.startsWith('filter')) return;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -249,24 +232,23 @@ export function HistogramRange({
   };
 
   const beginOverviewDrag = (
-    event: ReactPointerEvent<HTMLDivElement>,
+    event: ReactPointerEvent<HTMLDivElement>
   ): void => {
     if (disabled) return;
     const bounds = event.currentTarget.getBoundingClientRect();
-    const startX = (percent(draftViewStart, minimum, maximum) / 100) * bounds.width;
+    const startX =
+      (percent(draftViewStart, minimum, maximum) / 100) * bounds.width;
     const endX = (percent(draftViewEnd, minimum, maximum) / 100) * bounds.width;
     const x = event.clientX - bounds.left;
     const hitWidth = 10;
-    let kind: DragState["kind"];
-    if (Math.abs(x - startX) <= hitWidth) kind = "view-start";
-    else if (Math.abs(x - endX) <= hitWidth) kind = "view-end";
+    let kind: DragState['kind'];
+    if (Math.abs(x - startX) <= hitWidth) kind = 'view-start';
+    else if (Math.abs(x - endX) <= hitWidth) kind = 'view-end';
     else if (x > Math.min(startX, endX) && x < Math.max(startX, endX)) {
-      kind = "view-window";
+      kind = 'view-window';
     } else {
       kind =
-        Math.abs(x - startX) < Math.abs(x - endX)
-          ? "view-start"
-          : "view-end";
+        Math.abs(x - startX) < Math.abs(x - endX) ? 'view-start' : 'view-end';
     }
     dragRef.current = {
       kind,
@@ -276,57 +258,47 @@ export function HistogramRange({
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
-  const moveOverviewDrag = (
-    event: ReactPointerEvent<HTMLDivElement>,
-  ): void => {
+  const moveOverviewDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
     const drag = dragRef.current;
-    if (!drag || !drag.kind.startsWith("view")) return;
+    if (!drag || !drag.kind.startsWith('view')) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const domainSpan = Math.max(Number.EPSILON, maximum - minimum);
     const delta =
       ((event.clientX - drag.originX) / Math.max(1, bounds.width)) * domainSpan;
     const pointerRatio = Math.max(
       0,
-      Math.min(
-        1,
-        (event.clientX - bounds.left) / Math.max(1, bounds.width),
-      ),
+      Math.min(1, (event.clientX - bounds.left) / Math.max(1, bounds.width))
     );
     const pointerValue = minimum + pointerRatio * domainSpan;
-    if (drag.kind === "view-window") {
+    if (drag.kind === 'view-window') {
       setViewDraft(
         moveFixedTimeWindow(
           drag.initial[0],
           drag.initial[1],
           delta,
           minimum,
-          maximum,
-        ),
+          maximum
+        )
       );
       return;
     }
     const minimumSpan = Math.max(1, domainSpan / 100_000);
     const value =
-      drag.kind === "view-start"
-        ? Math.max(
-            minimum,
-            Math.min(pointerValue, draftViewEnd - minimumSpan),
-          )
+      drag.kind === 'view-start'
+        ? Math.max(minimum, Math.min(pointerValue, draftViewEnd - minimumSpan))
         : Math.min(
             maximum,
-            Math.max(pointerValue, draftViewStart + minimumSpan),
+            Math.max(pointerValue, draftViewStart + minimumSpan)
           );
     setViewDraft(
-      drag.kind === "view-start"
+      drag.kind === 'view-start'
         ? [value, draftViewEnd]
-        : [draftViewStart, value],
+        : [draftViewStart, value]
     );
   };
 
-  const endOverviewDrag = (
-    event: ReactPointerEvent<HTMLDivElement>,
-  ): void => {
-    if (!dragRef.current?.kind.startsWith("view")) return;
+  const endOverviewDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (!dragRef.current?.kind.startsWith('view')) return;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -340,12 +312,12 @@ export function HistogramRange({
     const bounds = event.currentTarget.getBoundingClientRect();
     const ratio = Math.max(
       0,
-      Math.min(1, (event.clientX - bounds.left) / Math.max(1, bounds.width)),
+      Math.min(1, (event.clientX - bounds.left) / Math.max(1, bounds.width))
     );
     const span = Math.max(1, draftViewEnd - draftViewStart);
     const nextSpan = Math.max(
       1,
-      Math.min(maximum - minimum, span * (event.deltaY < 0 ? 0.75 : 1.35)),
+      Math.min(maximum - minimum, span * (event.deltaY < 0 ? 0.75 : 1.35))
     );
     const cursor = draftViewStart + ratio * span;
     const range = clampTimeRange(
@@ -353,7 +325,7 @@ export function HistogramRange({
       cursor + (1 - ratio) * nextSpan,
       minimum,
       maximum,
-      1,
+      1
     );
     setViewDraft(range);
     onViewChange(...range);
@@ -416,7 +388,7 @@ export function HistogramRange({
 
       <div
         ref={plotRef}
-        className={`histogram-plot ${disabled ? "is-disabled" : ""}`}
+        className={`histogram-plot ${disabled ? 'is-disabled' : ''}`}
         tabIndex={disabled ? -1 : 0}
         onPointerDown={beginPlotDrag}
         onPointerMove={movePlotDrag}
@@ -430,16 +402,15 @@ export function HistogramRange({
           onViewChange(minimum, maximum);
         }}
         onKeyDown={(event) => {
-          if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
           event.preventDefault();
-          const delta =
-            (viewSpan / 100) * (event.key === "ArrowLeft" ? -1 : 1);
+          const delta = (viewSpan / 100) * (event.key === 'ArrowLeft' ? -1 : 1);
           const range = moveFixedTimeWindow(
             draftStart,
             draftEnd,
             delta,
             minimum,
-            maximum,
+            maximum
           );
           setFilterDraft(range);
           onChange(...range);
@@ -455,12 +426,12 @@ export function HistogramRange({
         />
         <i
           className="time-handle filter-handle"
-          style={{ left: `${filterLeft}%` }}
+          style={{left: `${filterLeft}%`}}
           title={`Filter start: ${formatFullTimestamp(draftStart)}`}
         />
         <i
           className="time-handle filter-handle"
-          style={{ left: `${filterRight}%` }}
+          style={{left: `${filterRight}%`}}
           title={`Filter stop: ${formatFullTimestamp(draftEnd)}`}
         />
       </div>
@@ -473,7 +444,7 @@ export function HistogramRange({
 
       <div
         ref={overviewRef}
-        className={`time-overview ${disabled ? "is-disabled" : ""}`}
+        className={`time-overview ${disabled ? 'is-disabled' : ''}`}
         tabIndex={disabled ? -1 : 0}
         aria-label="Global histogram start and stop"
         onPointerDown={beginOverviewDrag}
@@ -481,16 +452,16 @@ export function HistogramRange({
         onPointerUp={endOverviewDrag}
         onPointerCancel={endOverviewDrag}
         onKeyDown={(event) => {
-          if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
           event.preventDefault();
           const delta =
-            (domainSpan / 100) * (event.key === "ArrowLeft" ? -1 : 1);
+            (domainSpan / 100) * (event.key === 'ArrowLeft' ? -1 : 1);
           const range = moveFixedTimeWindow(
             draftViewStart,
             draftViewEnd,
             delta,
             minimum,
-            maximum,
+            maximum
           );
           setViewDraft(range);
           onViewChange(...range);
@@ -505,12 +476,12 @@ export function HistogramRange({
         />
         <i
           className="time-handle view-handle"
-          style={{ left: `${overviewLeft}%` }}
+          style={{left: `${overviewLeft}%`}}
           title={`Histogram start: ${formatFullTimestamp(draftViewStart)}`}
         />
         <i
           className="time-handle view-handle"
-          style={{ left: `${overviewRight}%` }}
+          style={{left: `${overviewRight}%`}}
           title={`Histogram stop: ${formatFullTimestamp(draftViewEnd)}`}
         />
       </div>

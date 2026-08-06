@@ -1,8 +1,8 @@
-import type { EngineDatasetState } from "./types";
+import type {EngineDatasetState} from './types';
 
 export function extendEngineState(
   state: EngineDatasetState | undefined,
-  rowCount: number,
+  rowCount: number
 ): EngineDatasetState | undefined {
   if (!state || rowCount < state.visible.length) return undefined;
   const visible = new Uint8Array(rowCount);
@@ -15,5 +15,11 @@ export function extendEngineState(
   const manualVisible = new Uint8Array(rowCount);
   manualVisible.fill(1);
   manualVisible.set(state.manualVisible ?? state.visible);
-  return {visible, manualVisible, deleted, selected, timeRange: [...state.timeRange]};
+  return {
+    visible,
+    manualVisible,
+    deleted,
+    selected,
+    timeRange: [...state.timeRange],
+  };
 }

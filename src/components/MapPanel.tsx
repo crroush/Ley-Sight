@@ -1,10 +1,10 @@
-import { useEffect, useRef } from "react";
-import { FastPointEngine } from "../map/FastPointEngine";
+import {useEffect, useRef} from 'react';
+import {FastPointEngine} from '../map/FastPointEngine';
 import type {
   EngineSelectionState,
   MeasurementState,
   RenderMetrics,
-} from "../lib/types";
+} from '../lib/types';
 
 type MapPanelProps = {
   onEngine: (engine: FastPointEngine | null) => void;
@@ -41,8 +41,7 @@ export function MapPanel({
     if (!containerRef.current) return;
     const engine = new FastPointEngine({
       target: containerRef.current,
-      onSelectionChange: (state) =>
-        callbacks.current.onSelectionChange(state),
+      onSelectionChange: (state) => callbacks.current.onSelectionChange(state),
       onMetrics: (metrics) => callbacks.current.onMetrics(metrics),
       onPointerCoordinate: (coordinate) =>
         callbacks.current.onPointerCoordinate(coordinate),

@@ -4,14 +4,21 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
-} from "react";
-import {useVirtualizer} from "@tanstack/react-virtual";
-import {containsCoordinate} from "ol/extent.js";
-import {fromLonLat} from "ol/proj.js";
-import {HistogramRange} from "../components/HistogramRange";
-import {buildFineTimeHistogram, formatFullTimestamp} from "../lib/timeHistogram";
-import {FastPointEngine} from "../map/FastPointEngine";
-import {createReferenceDataset, createReferenceRandom, packRgba} from "./referenceData";
+} from 'react';
+import {useVirtualizer} from '@tanstack/react-virtual';
+import {containsCoordinate} from 'ol/extent.js';
+import {fromLonLat} from 'ol/proj.js';
+import {HistogramRange} from '../components/HistogramRange';
+import {
+  buildFineTimeHistogram,
+  formatFullTimestamp,
+} from '../lib/timeHistogram';
+import {FastPointEngine} from '../map/FastPointEngine';
+import {
+  createReferenceDataset,
+  createReferenceRandom,
+  packRgba,
+} from './referenceData';
 
 const VIRTUAL_ROW_COUNT = 250_000;
 
@@ -36,7 +43,7 @@ export function VirtualFeatureTableExampleApp() {
 
   const chooseRow = (
     row: number,
-    event: ReactMouseEvent<HTMLButtonElement>,
+    event: ReactMouseEvent<HTMLButtonElement>
   ): void => {
     if (event.shiftKey && anchorRef.current != null) {
       const first = Math.min(anchorRef.current, row);
@@ -82,7 +89,7 @@ export function VirtualFeatureTableExampleApp() {
                 <button
                   type="button"
                   className={`reference-table-row reference-virtual-columns ${
-                    selected.has(row) ? "is-selected" : ""
+                    selected.has(row) ? 'is-selected' : ''
                   }`}
                   key={row}
                   style={{transform: `translateY(${item.start}px)`}}
@@ -99,18 +106,20 @@ export function VirtualFeatureTableExampleApp() {
       </section>
       <p className="reference-table-status">
         {selected.size
-          ? `Selected ${selected.size.toLocaleString()} rows: ${
-              selectedPreview.join(", ")
-            }${selected.size > 8 ? "..." : ""}`
-          : "Select table rows to see selected keys."}
+          ? `Selected ${selected.size.toLocaleString()} rows: ${selectedPreview.join(
+              ', '
+            )}${selected.size > 8 ? '...' : ''}`
+          : 'Select table rows to see selected keys.'}
       </p>
       <button
         type="button"
         className="reference-wide-button"
         onClick={() => {
-          setSelected(new Set(Array.from({length: 11}, (_, index) => index + 10)));
+          setSelected(
+            new Set(Array.from({length: 11}, (_, index) => index + 10))
+          );
           anchorRef.current = 10;
-          virtualizer.scrollToIndex(10, {align: "center"});
+          virtualizer.scrollToIndex(10, {align: 'center'});
         }}
       >
         Select rows 10-20 via feature IDs
@@ -139,19 +148,19 @@ function normalRandom(random: () => number): number {
 function buildActivityRecords(): ActivityRecord[] {
   const random = createReferenceRandom(7);
   const clusters = [
-    {center: ACTIVITY_START + 2 * 86_400, weight: 0.35, name: "Early surge"},
-    {center: ACTIVITY_START + 11 * 86_400, weight: 0.25, name: "Mid-month"},
-    {center: ACTIVITY_START + 20 * 86_400, weight: 0.30, name: "Late surge"},
-    {center: ACTIVITY_START + 28 * 86_400, weight: 0.10, name: "Cleanup"},
+    {center: ACTIVITY_START + 2 * 86_400, weight: 0.35, name: 'Early surge'},
+    {center: ACTIVITY_START + 11 * 86_400, weight: 0.25, name: 'Mid-month'},
+    {center: ACTIVITY_START + 20 * 86_400, weight: 0.3, name: 'Late surge'},
+    {center: ACTIVITY_START + 28 * 86_400, weight: 0.1, name: 'Cleanup'},
   ] as const;
   // Keep the same vectorized RNG call order as the Reference source.
   const latitudes = Array.from(
     {length: ACTIVITY_COUNT},
-    () => 32 + random() * 15,
+    () => 32 + random() * 15
   );
   const longitudes = Array.from(
     {length: ACTIVITY_COUNT},
-    () => -125 + random() * 15,
+    () => -125 + random() * 15
   );
   const choices = Array.from({length: ACTIVITY_COUNT}, () => random());
   return Array.from({length: ACTIVITY_COUNT}, (_, id) => {
@@ -167,7 +176,7 @@ function buildActivityRecords(): ActivityRecord[] {
     }
     const time = Math.max(
       ACTIVITY_START,
-      Math.min(ACTIVITY_END, cluster.center + normalRandom(random) * 28 * 3600),
+      Math.min(ACTIVITY_END, cluster.center + normalRandom(random) * 28 * 3600)
     );
     return {
       id,
@@ -195,25 +204,28 @@ function ActivityTable({
   const scrollRef = useRef<HTMLDivElement>(null);
   const anchorRef = useRef<number | null>(null);
   const [sort, setSort] = useState<{
-    column: "id" | "activity" | "time";
+    column: 'id' | 'activity' | 'time';
     descending: boolean;
-  }>({column: "id", descending: false});
+  }>({column: 'id', descending: false});
   const displayIndices = useMemo(() => {
     const output = [...visibleIndices];
     output.sort((first, second) => {
-      const firstValue = sort.column === "id"
-        ? first
-        : sort.column === "time"
-          ? rows[first].time
-          : rows[first].activity;
-      const secondValue = sort.column === "id"
-        ? second
-        : sort.column === "time"
-          ? rows[second].time
-          : rows[second].activity;
-      const comparison = typeof firstValue === "number"
-        ? firstValue - (secondValue as number)
-        : firstValue.localeCompare(secondValue as string);
+      const firstValue =
+        sort.column === 'id'
+          ? first
+          : sort.column === 'time'
+            ? rows[first].time
+            : rows[first].activity;
+      const secondValue =
+        sort.column === 'id'
+          ? second
+          : sort.column === 'time'
+            ? rows[second].time
+            : rows[second].activity;
+      const comparison =
+        typeof firstValue === 'number'
+          ? firstValue - (secondValue as number)
+          : firstValue.localeCompare(secondValue as string);
       return sort.descending ? -comparison : comparison;
     });
     return output;
@@ -229,7 +241,7 @@ function ActivityTable({
   useEffect(() => {
     if (firstSelected == null) return;
     const row = displayIndices.indexOf(firstSelected);
-    if (row >= 0) virtualizer.scrollToIndex(row, {align: "auto"});
+    if (row >= 0) virtualizer.scrollToIndex(row, {align: 'auto'});
   }, [displayIndices, firstSelected, virtualizer]);
 
   const changeSort = (column: typeof sort.column): void => {
@@ -242,10 +254,14 @@ function ActivityTable({
   return (
     <section className="reference-table-frame">
       <div className="reference-table-header reference-activity-columns">
-        {(["id", "activity", "time"] as const).map((column) => (
+        {(['id', 'activity', 'time'] as const).map((column) => (
           <button type="button" key={column} onClick={() => changeSort(column)}>
-            {column === "id" ? "ID" : column === "activity" ? "Activity" : "Timestamp"}
-            {sort.column === column ? (sort.descending ? " ▼" : " ▲") : ""}
+            {column === 'id'
+              ? 'ID'
+              : column === 'activity'
+                ? 'Activity'
+                : 'Timestamp'}
+            {sort.column === column ? (sort.descending ? ' ▼' : ' ▲') : ''}
           </button>
         ))}
       </div>
@@ -261,7 +277,7 @@ function ActivityTable({
               <button
                 type="button"
                 className={`reference-table-row reference-activity-columns ${
-                  selected.has(index) ? "is-selected" : ""
+                  selected.has(index) ? 'is-selected' : ''
                 }`}
                 key={index}
                 style={{transform: `translateY(${item.start}px)`}}
@@ -296,19 +312,13 @@ export function TimeHistogramExampleApp() {
   const records = useMemo(buildActivityRecords, []);
   const timeValues = useMemo(
     () => Float64Array.from(records, (record) => record.time),
-    [records],
+    [records]
   );
-  const timeMinimum = useMemo(
-    () => Math.min(...timeValues),
-    [timeValues],
-  );
-  const timeMaximum = useMemo(
-    () => Math.max(...timeValues),
-    [timeValues],
-  );
+  const timeMinimum = useMemo(() => Math.min(...timeValues), [timeValues]);
+  const timeMaximum = useMemo(() => Math.max(...timeValues), [timeValues]);
   const histogram = useMemo(
     () => buildFineTimeHistogram(timeValues, timeMinimum, timeMaximum),
-    [timeMaximum, timeMinimum, timeValues],
+    [timeMaximum, timeMinimum, timeValues]
   );
   const [filterRange, setFilterRange] = useState<[number, number]>([
     timeMinimum,
@@ -339,13 +349,13 @@ export function TimeHistogramExampleApp() {
     });
     engineRef.current = engine;
     const {dataset, summary} = createReferenceDataset(
-      "Time histogram sample",
+      'Time histogram sample',
       records.map((record) => ({
         longitude: record.longitude,
         latitude: record.latitude,
         time: record.time,
         color: packRgba(30, 144, 255, 180),
-      })),
+      }))
     );
     engine.loadDataset(dataset, summary);
     engine.setPointStyle({
@@ -379,7 +389,10 @@ export function TimeHistogramExampleApp() {
     const size = engine.map.getSize();
     if (
       size &&
-      !containsCoordinate(engine.map.getView().calculateExtent(size), coordinate)
+      !containsCoordinate(
+        engine.map.getView().calculateExtent(size),
+        coordinate
+      )
     ) {
       engine.map.getView().animate({center: coordinate, duration: 180});
     }
@@ -413,12 +426,16 @@ export function TimeHistogramExampleApp() {
             onViewChange={(start, end) => setViewRange([start, end])}
           />
           <p className="reference-time-info">
-            Showing {visibleIndices.length.toLocaleString()} /{" "}
-            {records.length.toLocaleString()} points | Hidden:{" "}
+            Showing {visibleIndices.length.toLocaleString()} /{' '}
+            {records.length.toLocaleString()} points | Hidden:{' '}
             {(records.length - visibleIndices.length).toLocaleString()} | Wheel
             over the plot to zoom and re-aggregate the histogram.
           </p>
-          <button type="button" className="reference-wide-button" onClick={reset}>
+          <button
+            type="button"
+            className="reference-wide-button"
+            onClick={reset}
+          >
             Reset Time Filter
           </button>
         </section>

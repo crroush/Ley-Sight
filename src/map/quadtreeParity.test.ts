@@ -1,6 +1,6 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { buildCompactSpatialIndex } from "./compactIndex";
+import assert from 'node:assert/strict';
+import {describe, it} from 'node:test';
+import {buildCompactSpatialIndex} from './compactIndex';
 import {
   WEB_MERCATOR_HALF_WORLD,
   WEB_MERCATOR_WORLD,
@@ -11,12 +11,12 @@ import {
   type Extent,
   type PointAccessor,
   type QuadtreeNode,
-} from "./quadtree";
+} from './quadtree';
 
 function objectRepresentative(
   node: QuadtreeNode,
   accessor: PointAccessor,
-  extent: Extent,
+  extent: Extent
 ): number {
   if (node.visibleCount <= 0) return -1;
   if (
@@ -39,8 +39,8 @@ function objectRepresentative(
   return -1;
 }
 
-describe("compact/original quadtree render parity", () => {
-  it("returns the same source-row candidates at multiple resolutions", () => {
+describe('compact/original quadtree render parity', () => {
+  it('returns the same source-row candidates at multiple resolutions', () => {
     const count = 50_000;
     const x = new Float64Array(count);
     const y = new Float64Array(count);

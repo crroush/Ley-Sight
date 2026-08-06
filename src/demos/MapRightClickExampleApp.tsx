@@ -1,20 +1,15 @@
-import {useEffect, useRef, useState} from "react";
-import Feature from "ol/Feature.js";
-import Point from "ol/geom/Point.js";
-import VectorLayer from "ol/layer/Vector.js";
-import TileLayer from "ol/layer/Tile.js";
-import Map from "ol/Map.js";
-import View from "ol/View.js";
-import {fromLonLat, toLonLat} from "ol/proj.js";
-import OSM from "ol/source/OSM.js";
-import VectorSource from "ol/source/Vector.js";
-import {
-  Circle as CircleStyle,
-  Fill,
-  Stroke,
-  Style,
-} from "ol/style.js";
-import {installReferenceCoordinateDisplay} from "../map/referenceCoordinateDisplay";
+import {useEffect, useRef, useState} from 'react';
+import Feature from 'ol/Feature.js';
+import Point from 'ol/geom/Point.js';
+import VectorLayer from 'ol/layer/Vector.js';
+import TileLayer from 'ol/layer/Tile.js';
+import Map from 'ol/Map.js';
+import View from 'ol/View.js';
+import {fromLonLat, toLonLat} from 'ol/proj.js';
+import OSM from 'ol/source/OSM.js';
+import VectorSource from 'ol/source/Vector.js';
+import {Circle as CircleStyle, Fill, Stroke, Style} from 'ol/style.js';
+import {installReferenceCoordinateDisplay} from '../map/referenceCoordinateDisplay';
 
 type MenuState = {
   left: number;
@@ -26,9 +21,9 @@ type MenuState = {
 function pointStyle(feature: Feature): Style {
   return new Style({
     image: new CircleStyle({
-      radius: Number(feature.get("radius") ?? 6),
-      fill: new Fill({color: String(feature.get("color") ?? "#1f77b4")}),
-      stroke: new Stroke({color: "rgba(0, 0, 0, 0.7)", width: 1}),
+      radius: Number(feature.get('radius') ?? 6),
+      fill: new Fill({color: String(feature.get('color') ?? '#1f77b4')}),
+      stroke: new Stroke({color: 'rgba(0, 0, 0, 0.7)', width: 1}),
     }),
   });
 }
@@ -48,7 +43,7 @@ export function MapRightClickExampleApp() {
 
   useEffect(() => {
     if (!mapTargetRef.current) return;
-    document.title = "Map Right-Click Context Menu Demo";
+    document.title = 'Map Right-Click Context Menu Demo';
     const source = sourceRef.current;
     source.clear();
     [
@@ -58,7 +53,7 @@ export function MapRightClickExampleApp() {
     ].forEach(([latitude, longitude], index) => {
       const feature = new Feature(new Point(fromLonLat([longitude, latitude])));
       feature.setId(`pt_${index + 1}`);
-      feature.setProperties({color: "#1f77b4", radius: 6});
+      feature.setProperties({color: '#1f77b4', radius: 6});
       source.addFeature(feature);
     });
     const layer = new VectorLayer({
@@ -75,14 +70,17 @@ export function MapRightClickExampleApp() {
     });
     const coordinates = installReferenceCoordinateDisplay(
       map,
-      mapTargetRef.current,
+      mapTargetRef.current
     );
     const viewport = map.getViewport();
     const onContextMenu = (event: MouseEvent): void => {
       event.preventDefault();
       const pixel = map.getEventPixel(event);
       const coordinate = map.getCoordinateFromPixel(pixel) as [number, number];
-      const feature = map.forEachFeatureAtPixel(pixel, (candidate) => candidate);
+      const feature = map.forEachFeatureAtPixel(
+        pixel,
+        (candidate) => candidate
+      );
       const bounds = mapContainerRef.current?.getBoundingClientRect();
       setMenu({
         left: event.clientX - (bounds?.left ?? 0),
@@ -92,12 +90,12 @@ export function MapRightClickExampleApp() {
       });
     };
     const close = (): void => setMenu(null);
-    viewport.addEventListener("contextmenu", onContextMenu);
-    map.on("movestart", close);
+    viewport.addEventListener('contextmenu', onContextMenu);
+    map.on('movestart', close);
     return () => {
       coordinates.dispose();
-      viewport.removeEventListener("contextmenu", onContextMenu);
-      map.un("movestart", close);
+      viewport.removeEventListener('contextmenu', onContextMenu);
+      map.un('movestart', close);
       map.setTarget(undefined);
     };
   }, []);
@@ -107,7 +105,7 @@ export function MapRightClickExampleApp() {
     pointCounterRef.current += 1;
     const feature = new Feature(new Point(menu.coordinate));
     feature.setId(`pt_${pointCounterRef.current}`);
-    feature.setProperties({color: "#2ca02c", radius: 6.5});
+    feature.setProperties({color: '#2ca02c', radius: 6.5});
     sourceRef.current.addFeature(feature);
     setMenu(null);
   };
@@ -116,7 +114,7 @@ export function MapRightClickExampleApp() {
     if (!menu?.featureId) return;
     const [longitude, latitude] = toLonLat(menu.coordinate);
     window.alert(
-      `Feature: ${menu.featureId}\nLatitude: ${latitude.toFixed(6)}\nLongitude: ${longitude.toFixed(6)}`,
+      `Feature: ${menu.featureId}\nLatitude: ${latitude.toFixed(6)}\nLongitude: ${longitude.toFixed(6)}`
     );
     setMenu(null);
   };
@@ -127,14 +125,17 @@ export function MapRightClickExampleApp() {
     try {
       await navigator.clipboard.writeText(text);
     } catch {
-      window.prompt("Copy coordinates", text);
+      window.prompt('Copy coordinates', text);
     }
     setMenu(null);
   };
 
   return (
     <main className="reference-example-window">
-      <div className="reference-map-fill reference-context-map" ref={mapContainerRef}>
+      <div
+        className="reference-map-fill reference-context-map"
+        ref={mapContainerRef}
+      >
         <div className="reference-map-target-fill" ref={mapTargetRef} />
         {menu && (
           <div

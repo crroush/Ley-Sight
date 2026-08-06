@@ -4,7 +4,7 @@ import {
   type ReactNode,
   useEffect,
   useRef,
-} from "react";
+} from 'react';
 
 type ModalDialogProps = {
   children: ReactNode;
@@ -18,18 +18,18 @@ type ModalDialogProps = {
 };
 
 const FOCUSABLE = [
-  "button:not([disabled])",
-  "[href]",
-  "input:not([disabled])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
+  'button:not([disabled])',
+  '[href]',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
   "[tabindex]:not([tabindex='-1'])",
-].join(",");
+].join(',');
 
 /** Shared accessible behavior for the application's modal dialogs. */
 export function ModalDialog({
   children,
-  className = "",
+  className = '',
   titleId,
   descriptionId,
   onDismiss,
@@ -40,13 +40,17 @@ export function ModalDialog({
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
+    const opener =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     const dialog = dialogRef.current;
-    const target = (initialFocus
-      ? dialog?.querySelector<HTMLElement>(initialFocus)
-      : null) ?? dialog?.querySelector<HTMLElement>(FOCUSABLE) ?? dialog;
+    const target =
+      (initialFocus
+        ? dialog?.querySelector<HTMLElement>(initialFocus)
+        : null) ??
+      dialog?.querySelector<HTMLElement>(FOCUSABLE) ??
+      dialog;
     target?.focus();
 
     return () => {
@@ -55,15 +59,15 @@ export function ModalDialog({
   }, [initialFocus]);
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape" && closeOnEscape && onDismiss) {
+    if (event.key === 'Escape' && closeOnEscape && onDismiss) {
       event.preventDefault();
       onDismiss();
       return;
     }
-    if (event.key !== "Tab") return;
+    if (event.key !== 'Tab') return;
 
     const focusable = Array.from(
-      event.currentTarget.querySelectorAll<HTMLElement>(FOCUSABLE),
+      event.currentTarget.querySelectorAll<HTMLElement>(FOCUSABLE)
     );
     if (!focusable.length) {
       event.preventDefault();
@@ -87,7 +91,11 @@ export function ModalDialog({
   };
 
   const handleBackdropClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (dismissOnBackdrop && onDismiss && event.target === event.currentTarget) {
+    if (
+      dismissOnBackdrop &&
+      onDismiss &&
+      event.target === event.currentTarget
+    ) {
       onDismiss();
     }
   };
@@ -100,7 +108,7 @@ export function ModalDialog({
     >
       <div
         ref={dialogRef}
-        className={`dialog${className ? ` ${className}` : ""}`}
+        className={`dialog${className ? ` ${className}` : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

@@ -1,15 +1,15 @@
-import {useEffect, useRef, useState} from "react";
-import ImageLayer from "ol/layer/Image.js";
-import TileLayer from "ol/layer/Tile.js";
-import Map from "ol/Map.js";
-import View from "ol/View.js";
-import {fromLonLat, transformExtent} from "ol/proj.js";
-import ImageStatic from "ol/source/ImageStatic.js";
-import OSM from "ol/source/OSM.js";
-import {installReferenceCoordinateDisplay} from "../map/referenceCoordinateDisplay";
+import {useEffect, useRef, useState} from 'react';
+import ImageLayer from 'ol/layer/Image.js';
+import TileLayer from 'ol/layer/Tile.js';
+import Map from 'ol/Map.js';
+import View from 'ol/View.js';
+import {fromLonLat, transformExtent} from 'ol/proj.js';
+import ImageStatic from 'ol/source/ImageStatic.js';
+import OSM from 'ol/source/OSM.js';
+import {installReferenceCoordinateDisplay} from '../map/referenceCoordinateDisplay';
 
 type RasterResult = {
-  type: "complete";
+  type: 'complete';
   requestId: number;
   width: number;
   height: number;
@@ -21,7 +21,7 @@ const POLYGON_BOUNDS = {
   latitudeMinimum: 37.682,
   longitudeMinimum: -122.545,
   latitudeMaximum: 37.845,
-  longitudeMaximum: -122.340,
+  longitudeMaximum: -122.34,
 } as const;
 const RASTER_EXTENT = transformExtent(
   [
@@ -30,15 +30,15 @@ const RASTER_EXTENT = transformExtent(
     POLYGON_BOUNDS.longitudeMaximum,
     POLYGON_BOUNDS.latitudeMaximum,
   ],
-  "EPSG:4326",
-  "EPSG:3857",
+  'EPSG:4326',
+  'EPSG:3857'
 );
 
 function haversine(
   latitude1: number,
   longitude1: number,
   latitude2: number,
-  longitude2: number,
+  longitude2: number
 ): number {
   const radians = Math.PI / 180;
   const phi1 = latitude1 * radians;
@@ -59,27 +59,27 @@ const POLYGON_WIDTH_METERS = haversine(
   MID_LATITUDE,
   POLYGON_BOUNDS.longitudeMinimum,
   MID_LATITUDE,
-  POLYGON_BOUNDS.longitudeMaximum,
+  POLYGON_BOUNDS.longitudeMaximum
 );
 const POLYGON_HEIGHT_METERS = haversine(
   POLYGON_BOUNDS.latitudeMinimum,
   MID_LONGITUDE,
   POLYGON_BOUNDS.latitudeMaximum,
-  MID_LONGITUDE,
+  MID_LONGITUDE
 );
 
 function resultUrl(result: RasterResult): string {
-  const canvas = document.createElement("canvas");
+  const canvas = document.createElement('canvas');
   canvas.width = result.width;
   canvas.height = result.height;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("2D canvas is unavailable.");
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('2D canvas is unavailable.');
   context.putImageData(
     new ImageData(result.pixels, result.width, result.height),
     0,
-    0,
+    0
   );
-  return canvas.toDataURL("image/png");
+  return canvas.toDataURL('image/png');
 }
 
 /** Source-matched port of examples/14_delayed_render_interrupt.py. */
@@ -94,32 +94,29 @@ export function DelayedRasterExampleApp() {
   const activeRef = useRef(false);
   const qualityRef = useRef(3);
   const interruptsRef = useRef(0);
-  const renderKeyRef = useRef("");
+  const renderKeyRef = useRef('');
   const [quality, setQuality] = useState(3);
-  const [status, setStatus] = useState("Waiting for first extent...");
+  const [status, setStatus] = useState('Waiting for first extent...');
 
   const beginRender = (): void => {
     const map = mapInstanceRef.current;
     if (!map) return;
     const size = map.getSize() ?? [1024, 768];
-    const resolution = Math.max(
-      1e-9,
-      map.getView().getResolution() ?? 1,
-    );
+    const resolution = Math.max(1e-9, map.getView().getResolution() ?? 1);
     const width = Math.max(
       180,
-      Math.min(1600, Math.trunc(POLYGON_WIDTH_METERS / resolution)),
+      Math.min(1600, Math.trunc(POLYGON_WIDTH_METERS / resolution))
     );
     const height = Math.max(
       180,
-      Math.min(1600, Math.trunc(POLYGON_HEIGHT_METERS / resolution)),
+      Math.min(1600, Math.trunc(POLYGON_HEIGHT_METERS / resolution))
     );
     const metersPerLongitudeDegree = Math.max(
       1,
-      111_320 * Math.cos(MID_LATITUDE * Math.PI / 180),
+      111_320 * Math.cos((MID_LATITUDE * Math.PI) / 180)
     );
-    const qLon = Math.max(1e-12, resolution * 6 / metersPerLongitudeDegree);
-    const qLat = Math.max(1e-12, resolution * 6 / 110_540);
+    const qLon = Math.max(1e-12, (resolution * 6) / metersPerLongitudeDegree);
+    const qLat = Math.max(1e-12, (resolution * 6) / 110_540);
     const renderKey = [
       width,
       height,
@@ -127,12 +124,12 @@ export function DelayedRasterExampleApp() {
       Math.trunc(size[0]),
       Math.trunc(size[1]),
       qualityRef.current,
-    ].join(":");
+    ].join(':');
     if (renderKey === renderKeyRef.current) {
       setStatus(
         `⏸ skipped (pan/no resolution change) | raster=${width}x${height}px ` +
-        `| res≈${resolution.toFixed(3)} m/px | bin≈${qLon.toFixed(6)}°, ` +
-        `${qLat.toFixed(6)}° | interrupts=${interruptsRef.current}`,
+          `| res≈${resolution.toFixed(3)} m/px | bin≈${qLon.toFixed(6)}°, ` +
+          `${qLat.toFixed(6)}° | interrupts=${interruptsRef.current}`
       );
       return;
     }
@@ -144,28 +141,31 @@ export function DelayedRasterExampleApp() {
       if (activeRef.current) interruptsRef.current += 1;
     }
     const worker = new Worker(
-      new URL("../workers/raster.worker.ts", import.meta.url),
-      {type: "module"},
+      new URL('../workers/raster.worker.ts', import.meta.url),
+      {type: 'module'}
     );
     workerRef.current = worker;
     activeRef.current = true;
     const requestId = ++requestRef.current;
     worker.onmessage = (event: MessageEvent<RasterResult>) => {
       if (
-        event.data.type !== "complete" ||
+        event.data.type !== 'complete' ||
         event.data.requestId !== requestRef.current
-      ) return;
+      )
+        return;
       activeRef.current = false;
-      rasterLayerRef.current.setSource(new ImageStatic({
-        url: resultUrl(event.data),
-        imageExtent: RASTER_EXTENT,
-        projection: "EPSG:3857",
-      }));
+      rasterLayerRef.current.setSource(
+        new ImageStatic({
+          url: resultUrl(event.data),
+          imageExtent: RASTER_EXTENT,
+          projection: 'EPSG:3857',
+        })
+      );
       setStatus(
         `✅ updated req#${requestId} in ${(event.data.elapsedMs / 1000).toFixed(2)}s ` +
-        `| raster=${event.data.width}x${event.data.height}px ` +
-        `| quality=${qualityRef.current} | bin≈${qLon.toFixed(6)}°, ` +
-        `${qLat.toFixed(6)}° | interrupts=${interruptsRef.current}`,
+          `| raster=${event.data.width}x${event.data.height}px ` +
+          `| quality=${qualityRef.current} | bin≈${qLon.toFixed(6)}°, ` +
+          `${qLat.toFixed(6)}° | interrupts=${interruptsRef.current}`
       );
     };
     worker.onerror = () => {
@@ -173,21 +173,21 @@ export function DelayedRasterExampleApp() {
       setStatus(`❌ render #${requestId} failed`);
     };
     worker.postMessage({
-      type: "render",
+      type: 'render',
       requestId,
       width,
       height,
-      mask: "irregular",
-      profile: "reference14",
+      mask: 'irregular',
+      profile: 'reference14',
       quality: qualityRef.current,
       qLon,
       qLat,
     });
     setStatus(
       `⏳ recomputing req#${requestId} | target=${width}x${height}px ` +
-      `| view=${Math.trunc(size[0])}x${Math.trunc(size[1])}px ` +
-      `| res≈${resolution.toFixed(3)} m/px | bin≈${qLon.toFixed(6)}°, ` +
-      `${qLat.toFixed(6)}° | interrupts=${interruptsRef.current}`,
+        `| view=${Math.trunc(size[0])}x${Math.trunc(size[1])}px ` +
+        `| res≈${resolution.toFixed(3)} m/px | bin≈${qLon.toFixed(6)}°, ` +
+        `${qLat.toFixed(6)}° | interrupts=${interruptsRef.current}`
     );
   };
 
@@ -207,7 +207,7 @@ export function DelayedRasterExampleApp() {
 
   useEffect(() => {
     if (!mapRef.current) return;
-    document.title = "Delayed Raster Render with Debounce + Interrupt";
+    document.title = 'Delayed Raster Render with Debounce + Interrupt';
     rasterLayerRef.current.setZIndex(10);
     const map = new Map({
       target: mapRef.current,
@@ -220,12 +220,9 @@ export function DelayedRasterExampleApp() {
         zoom: 10,
       }),
     });
-    const coordinates = installReferenceCoordinateDisplay(
-      map,
-      mapRef.current,
-    );
+    const coordinates = installReferenceCoordinateDisplay(map, mapRef.current);
     mapInstanceRef.current = map;
-    map.on("moveend", scheduleViewExtent);
+    map.on('moveend', scheduleViewExtent);
     scheduleViewExtent();
     return () => {
       coordinates.dispose();
@@ -259,7 +256,10 @@ export function DelayedRasterExampleApp() {
               max="5"
               value={quality}
               onChange={(event) => {
-                const next = Math.max(1, Math.min(5, Number(event.target.value)));
+                const next = Math.max(
+                  1,
+                  Math.min(5, Number(event.target.value))
+                );
                 qualityRef.current = next;
                 setQuality(next);
                 scheduleRender();

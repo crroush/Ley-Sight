@@ -1,29 +1,25 @@
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {VirtualDataTable, type VirtualDataTableColumn} from "../../widgets/VirtualDataTable";
-import Feature from "ol/Feature.js";
-import Point from "ol/geom/Point.js";
-import VectorLayer from "ol/layer/Vector.js";
-import {fromLonLat} from "ol/proj.js";
-import VectorSource from "ol/source/Vector.js";
+  VirtualDataTable,
+  type VirtualDataTableColumn,
+} from '../../widgets/VirtualDataTable';
+import Feature from 'ol/Feature.js';
+import Point from 'ol/geom/Point.js';
+import VectorLayer from 'ol/layer/Vector.js';
+import {fromLonLat} from 'ol/proj.js';
+import VectorSource from 'ol/source/Vector.js';
+import {Circle as CircleStyle, Fill, Stroke, Style} from 'ol/style.js';
+import {FastPointEngine} from '../../map/FastPointEngine';
 import {
-  Circle as CircleStyle,
-  Fill,
-  Stroke,
-  Style,
-} from "ol/style.js";
-import {FastPointEngine} from "../../map/FastPointEngine";
-import {createSampleDataset, createSeededRandom, packRgba} from "../data/sampleData";
+  createSampleDataset,
+  createSeededRandom,
+  packRgba,
+} from '../data/sampleData';
 
 type IntegratedRow = {
   key: string;
-  layer: "cities" | "measurements" | "geo_points";
-  type: "point" | "geo_point";
+  layer: 'cities' | 'measurements' | 'geo_points';
+  type: 'point' | 'geo_point';
   id: string;
   value: string;
   latitude: number;
@@ -36,31 +32,31 @@ type IntegratedRow = {
 
 const INITIAL_CITIES: IntegratedRow[] = [
   {
-    key: "cities:city_0",
-    layer: "cities",
-    type: "point",
-    id: "city_0",
-    value: "San Francisco",
+    key: 'cities:city_0',
+    layer: 'cities',
+    type: 'point',
+    id: 'city_0',
+    value: 'San Francisco',
     latitude: 37.7749,
     longitude: -122.4194,
     color: packRgba(255, 0, 0),
   },
   {
-    key: "cities:city_1",
-    layer: "cities",
-    type: "point",
-    id: "city_1",
-    value: "Los Angeles",
+    key: 'cities:city_1',
+    layer: 'cities',
+    type: 'point',
+    id: 'city_1',
+    value: 'Los Angeles',
     latitude: 34.0522,
     longitude: -118.2437,
     color: packRgba(255, 0, 0),
   },
   {
-    key: "cities:city_2",
-    layer: "cities",
-    type: "point",
-    id: "city_2",
-    value: "Seattle",
+    key: 'cities:city_2',
+    layer: 'cities',
+    type: 'point',
+    id: 'city_2',
+    value: 'Seattle',
     latitude: 47.6062,
     longitude: -122.3321,
     color: packRgba(255, 0, 0),
@@ -75,14 +71,19 @@ type IntegrationTableProps = {
 };
 
 const integrationTableColumns: readonly VirtualDataTableColumn<IntegratedRow>[] =
-  (["layer", "type", "id", "value"] as const).map((column) => ({
+  (['layer', 'type', 'id', 'value'] as const).map((column) => ({
     key: column,
     heading: column[0].toUpperCase() + column.slice(1),
     sortValue: (row: IntegratedRow) => row[column],
     render: (row: IntegratedRow) => row[column],
   }));
 
-function IntegrationTable({rows, selected, onSelection, onContextMenu}: IntegrationTableProps) {
+function IntegrationTable({
+  rows,
+  selected,
+  onSelection,
+  onContextMenu,
+}: IntegrationTableProps) {
   return (
     <VirtualDataTable
       rows={rows}
@@ -125,58 +126,59 @@ export function TableIntegrationExampleApp() {
   rowsRef.current = rows;
   selectedRef.current = selected;
 
-  const rebuildEngine = useCallback((
-    nextRows: readonly IntegratedRow[],
-    selection: ReadonlySet<string>,
-  ) => {
-    const engine = engineRef.current;
-    if (!engine) return;
-    const mapped = nextRows.filter((row) => row.layer !== "cities");
-    engineKeysRef.current = mapped.map((row) => row.key);
-    if (mapped.length === 0) {
+  const rebuildEngine = useCallback(
+    (nextRows: readonly IntegratedRow[], selection: ReadonlySet<string>) => {
+      const engine = engineRef.current;
+      if (!engine) return;
+      const mapped = nextRows.filter((row) => row.layer !== 'cities');
+      engineKeysRef.current = mapped.map((row) => row.key);
+      if (mapped.length === 0) {
+        syncingRef.current = true;
+        engine.clear();
+        syncingRef.current = false;
+        return;
+      }
+      const {dataset, summary} = createSampleDataset(
+        'Interactive map-table rows',
+        mapped.map((row) => ({
+          latitude: row.latitude,
+          longitude: row.longitude,
+          semiMajor: row.semiMajor,
+          semiMinor: row.semiMinor,
+          tilt: row.tilt,
+          color: row.color,
+        }))
+      );
       syncingRef.current = true;
-      engine.clear();
+      engine.loadDataset(dataset, summary);
+      const indices: number[] = [];
+      for (let index = 0; index < mapped.length; index += 1) {
+        if (selection.has(mapped[index].key)) indices.push(index);
+      }
+      engine.selectIndices(indices, true);
       syncingRef.current = false;
-      return;
-    }
-    const {dataset, summary} = createSampleDataset(
-      "Interactive map-table rows",
-      mapped.map((row) => ({
-        latitude: row.latitude,
-        longitude: row.longitude,
-        semiMajor: row.semiMajor,
-        semiMinor: row.semiMinor,
-        tilt: row.tilt,
-        color: row.color,
-      })),
-    );
-    syncingRef.current = true;
-    engine.loadDataset(dataset, summary);
-    const indices: number[] = [];
-    for (let index = 0; index < mapped.length; index += 1) {
-      if (selection.has(mapped[index].key)) indices.push(index);
-    }
-    engine.selectIndices(indices, true);
-    syncingRef.current = false;
-  }, []);
+    },
+    []
+  );
 
-  const updateCityFeatures = useCallback((
-    nextRows: readonly IntegratedRow[],
-  ) => {
-    const source = citySourceRef.current;
-    source.clear();
-    source.addFeatures(
-      nextRows
-        .filter((row) => row.layer === "cities")
-        .map((row) => {
-          const feature = new Feature(
-            new Point(fromLonLat([row.longitude, row.latitude])),
-          );
-          feature.set("rowKey", row.key);
-          return feature;
-        }),
-    );
-  }, []);
+  const updateCityFeatures = useCallback(
+    (nextRows: readonly IntegratedRow[]) => {
+      const source = citySourceRef.current;
+      source.clear();
+      source.addFeatures(
+        nextRows
+          .filter((row) => row.layer === 'cities')
+          .map((row) => {
+            const feature = new Feature(
+              new Point(fromLonLat([row.longitude, row.latitude]))
+            );
+            feature.set('rowKey', row.key);
+            return feature;
+          })
+      );
+    },
+    []
+  );
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -185,7 +187,7 @@ export function TableIntegrationExampleApp() {
       onSelectionChange: () => {
         if (syncingRef.current) return;
         const next = new Set(
-          [...selectedRef.current].filter((key) => key.startsWith("cities:")),
+          [...selectedRef.current].filter((key) => key.startsWith('cities:'))
         );
         for (const index of engine.selectedIndices()) {
           const key = engineKeysRef.current[index];
@@ -206,12 +208,14 @@ export function TableIntegrationExampleApp() {
     const cityLayer = new VectorLayer({
       source: citySourceRef.current,
       style: (feature) => {
-        const isSelected = selectedRef.current.has(String(feature.get("rowKey")));
+        const isSelected = selectedRef.current.has(
+          String(feature.get('rowKey'))
+        );
         return new Style({
           image: new CircleStyle({
             radius: isSelected ? 12 : 10,
-            fill: new Fill({color: isSelected ? "yellow" : "red"}),
-            stroke: new Stroke({color: "darkred", width: 2}),
+            fill: new Fill({color: isSelected ? 'yellow' : 'red'}),
+            stroke: new Stroke({color: 'darkred', width: 2}),
           }),
         });
       },
@@ -220,17 +224,17 @@ export function TableIntegrationExampleApp() {
     cityLayerRef.current = cityLayer;
     engine.map.addLayer(cityLayer);
     updateCityFeatures(INITIAL_CITIES);
-    engine.map.on("singleclick", (event) => {
+    engine.map.on('singleclick', (event) => {
       const feature = engine.map.forEachFeatureAtPixel(
         event.pixel,
         (candidate) => candidate,
-        {layerFilter: (candidate) => candidate === cityLayer},
+        {layerFilter: (candidate) => candidate === cityLayer}
       );
       if (!feature) return;
-      const key = String(feature.get("rowKey"));
+      const key = String(feature.get('rowKey'));
       setSelected((current) => {
         const next = new Set(
-          [...current].filter((candidate) => !candidate.startsWith("cities:")),
+          [...current].filter((candidate) => !candidate.startsWith('cities:'))
         );
         next.add(key);
         return next;
@@ -251,21 +255,21 @@ export function TableIntegrationExampleApp() {
   useEffect(() => {
     engineRef.current?.setEllipsesVisible(allEllipses);
     engineRef.current?.setSelectedEllipsesVisible(
-      allEllipses || selectedEllipses,
+      allEllipses || selectedEllipses
     );
   }, [allEllipses, selectedEllipses]);
 
   useEffect(() => {
     const deleteKey = (event: KeyboardEvent): void => {
-      if (event.key === "Delete") deleteSelected();
+      if (event.key === 'Delete') deleteSelected();
     };
-    window.addEventListener("keydown", deleteKey);
-    return () => window.removeEventListener("keydown", deleteKey);
+    window.addEventListener('keydown', deleteKey);
+    return () => window.removeEventListener('keydown', deleteKey);
   });
 
   const applyTableSelection = (
     keys: readonly string[],
-    additive: boolean,
+    additive: boolean
   ): void => {
     const next = additive ? new Set(selectedRef.current) : new Set<string>();
     for (const key of keys) {
@@ -301,8 +305,8 @@ export function TableIntegrationExampleApp() {
       countersRef.current.city += 1;
       added.push({
         key: `cities:city_${counter}`,
-        layer: "cities",
-        type: "point",
+        layer: 'cities',
+        type: 'point',
         id: `city_${counter}`,
         value: `City #${countersRef.current.city}`,
         latitude: 32.5 + random() * 10,
@@ -320,8 +324,8 @@ export function TableIntegrationExampleApp() {
       const counter = countersRef.current.measurement++;
       added.push({
         key: `measurements:meas_${counter}`,
-        layer: "measurements",
-        type: "point",
+        layer: 'measurements',
+        type: 'point',
         id: `meas_${counter}`,
         value: (random() * 100).toFixed(1),
         latitude: 32 + random() * 15,
@@ -340,8 +344,8 @@ export function TableIntegrationExampleApp() {
       const semiMajor = 500 + random() * 3500;
       added.push({
         key: `geo_points:geo_${counter}`,
-        layer: "geo_points",
-        type: "geo_point",
+        layer: 'geo_points',
+        type: 'geo_point',
         id: `geo_${counter}`,
         value: `σ=${semiMajor.toFixed(0)}m`,
         latitude: 32 + random() * 15,
@@ -358,7 +362,7 @@ export function TableIntegrationExampleApp() {
   function deleteSelected(): void {
     if (selectedRef.current.size === 0) return;
     const nextRows = rowsRef.current.filter(
-      (row) => !selectedRef.current.has(row.key),
+      (row) => !selectedRef.current.has(row.key)
     );
     rowsRef.current = nextRows;
     setRows(nextRows);
@@ -383,7 +387,7 @@ export function TableIntegrationExampleApp() {
           gridTemplateColumns:
             `minmax(190px, ${controlsPercent}%) 6px ` +
             `minmax(300px, ${tableEndPercent - controlsPercent}%) 6px ` +
-            "minmax(0, 1fr)",
+            'minmax(0, 1fr)',
         }}
       >
         <aside className="reference-integration-controls">
@@ -398,7 +402,9 @@ export function TableIntegrationExampleApp() {
               value={vectorCount}
               onChange={(event) => setVectorCount(Number(event.target.value))}
             />
-            <button type="button" onClick={addCities}>Add Cities</button>
+            <button type="button" onClick={addCities}>
+              Add Cities
+            </button>
           </fieldset>
           <fieldset>
             <legend>FastPoints Layer (Measurements)</legend>
@@ -410,7 +416,9 @@ export function TableIntegrationExampleApp() {
               value={fastCount}
               onChange={(event) => setFastCount(Number(event.target.value))}
             />
-            <button type="button" onClick={addMeasurements}>Add Measurements</button>
+            <button type="button" onClick={addMeasurements}>
+              Add Measurements
+            </button>
           </fieldset>
           <fieldset>
             <legend>FastGeoPoints Layer (Uncertainty)</legend>
@@ -422,7 +430,9 @@ export function TableIntegrationExampleApp() {
               value={geoCount}
               onChange={(event) => setGeoCount(Number(event.target.value))}
             />
-            <button type="button" onClick={addGeoPoints}>Add Geo Points</button>
+            <button type="button" onClick={addGeoPoints}>
+              Add Geo Points
+            </button>
             <label>
               <input
                 type="checkbox"
@@ -440,7 +450,11 @@ export function TableIntegrationExampleApp() {
               Show Selected Ellipses
             </label>
           </fieldset>
-          <button type="button" className="reference-delete-button" onClick={deleteSelected}>
+          <button
+            type="button"
+            className="reference-delete-button"
+            onClick={deleteSelected}
+          >
             Delete Selected (or press Delete key)
           </button>
           <span>Total features: {rows.length.toLocaleString()}</span>
@@ -453,7 +467,7 @@ export function TableIntegrationExampleApp() {
           tabIndex={0}
           onPointerDown={(event) => {
             event.currentTarget.setPointerCapture(event.pointerId);
-            event.currentTarget.classList.add("is-dragging");
+            event.currentTarget.classList.add('is-dragging');
           }}
           onPointerMove={(event) => {
             if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
@@ -462,22 +476,22 @@ export function TableIntegrationExampleApp() {
             const percent =
               ((event.clientX - bounds.left) / bounds.width) * 100;
             setControlsPercent(
-              Math.max(12, Math.min(tableEndPercent - 18, percent)),
+              Math.max(12, Math.min(tableEndPercent - 18, percent))
             );
           }}
           onPointerUp={(event) => {
             if (event.currentTarget.hasPointerCapture(event.pointerId)) {
               event.currentTarget.releasePointerCapture(event.pointerId);
             }
-            event.currentTarget.classList.remove("is-dragging");
+            event.currentTarget.classList.remove('is-dragging');
           }}
           onPointerCancel={(event) =>
-            event.currentTarget.classList.remove("is-dragging")
+            event.currentTarget.classList.remove('is-dragging')
           }
           onKeyDown={(event) => {
-            if (event.key === "ArrowLeft") {
+            if (event.key === 'ArrowLeft') {
               setControlsPercent((current) => Math.max(12, current - 2));
-            } else if (event.key === "ArrowRight") {
+            } else if (event.key === 'ArrowRight') {
               setControlsPercent((current) =>
                 Math.min(tableEndPercent - 18, current + 2)
               );
@@ -492,7 +506,8 @@ export function TableIntegrationExampleApp() {
           selected={selected}
           onSelection={applyTableSelection}
           onContextMenu={(x, y, key) => {
-            if (!selectedRef.current.has(key)) applyTableSelection([key], false);
+            if (!selectedRef.current.has(key))
+              applyTableSelection([key], false);
             setMenu({x, y});
           }}
         />
@@ -504,7 +519,7 @@ export function TableIntegrationExampleApp() {
           tabIndex={0}
           onPointerDown={(event) => {
             event.currentTarget.setPointerCapture(event.pointerId);
-            event.currentTarget.classList.add("is-dragging");
+            event.currentTarget.classList.add('is-dragging');
           }}
           onPointerMove={(event) => {
             if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
@@ -513,24 +528,24 @@ export function TableIntegrationExampleApp() {
             const percent =
               ((event.clientX - bounds.left) / bounds.width) * 100;
             setTableEndPercent(
-              Math.max(controlsPercent + 18, Math.min(75, percent)),
+              Math.max(controlsPercent + 18, Math.min(75, percent))
             );
           }}
           onPointerUp={(event) => {
             if (event.currentTarget.hasPointerCapture(event.pointerId)) {
               event.currentTarget.releasePointerCapture(event.pointerId);
             }
-            event.currentTarget.classList.remove("is-dragging");
+            event.currentTarget.classList.remove('is-dragging');
           }}
           onPointerCancel={(event) =>
-            event.currentTarget.classList.remove("is-dragging")
+            event.currentTarget.classList.remove('is-dragging')
           }
           onKeyDown={(event) => {
-            if (event.key === "ArrowLeft") {
+            if (event.key === 'ArrowLeft') {
               setTableEndPercent((current) =>
                 Math.max(controlsPercent + 18, current - 2)
               );
-            } else if (event.key === "ArrowRight") {
+            } else if (event.key === 'ArrowRight') {
               setTableEndPercent((current) => Math.min(75, current + 2));
             } else {
               return;
@@ -548,14 +563,20 @@ export function TableIntegrationExampleApp() {
           <button
             type="button"
             onClick={() => {
-              const chosen = rowsRef.current.filter((row) => selectedRef.current.has(row.key));
-              window.alert(chosen.map((row) => JSON.stringify(row, null, 2)).join("\n\n"));
+              const chosen = rowsRef.current.filter((row) =>
+                selectedRef.current.has(row.key)
+              );
+              window.alert(
+                chosen.map((row) => JSON.stringify(row, null, 2)).join('\n\n')
+              );
               setMenu(null);
             }}
           >
             View Metadata
           </button>
-          <button type="button" onClick={deleteSelected}>Delete Selected</button>
+          <button type="button" onClick={deleteSelected}>
+            Delete Selected
+          </button>
           <button
             type="button"
             onClick={() => {

@@ -1,9 +1,9 @@
-import assert from "node:assert/strict";
-import {describe, it} from "node:test";
-import {modifierBoxSelection} from "./selectionInteractions";
+import assert from 'node:assert/strict';
+import {describe, it} from 'node:test';
+import {modifierBoxSelection} from './selectionInteractions';
 
 function gesture(
-  update: Partial<Parameters<typeof modifierBoxSelection>[0]["originalEvent"]>,
+  update: Partial<Parameters<typeof modifierBoxSelection>[0]['originalEvent']>
 ) {
   return {
     originalEvent: {
@@ -17,25 +17,25 @@ function gesture(
   };
 }
 
-describe("map selection interaction", () => {
-  it("accepts Ctrl-drag and Cmd-drag with the primary button", () => {
+describe('map selection interaction', () => {
+  it('accepts Ctrl-drag and Cmd-drag with the primary button', () => {
     assert.equal(modifierBoxSelection(gesture({ctrlKey: true})), true);
     assert.equal(modifierBoxSelection(gesture({metaKey: true})), true);
   });
 
-  it("rejects unmodified, Shift, Alt, and non-primary drags", () => {
+  it('rejects unmodified, Shift, Alt, and non-primary drags', () => {
     assert.equal(modifierBoxSelection(gesture({})), false);
     assert.equal(
       modifierBoxSelection(gesture({ctrlKey: true, shiftKey: true})),
-      false,
+      false
     );
     assert.equal(
       modifierBoxSelection(gesture({ctrlKey: true, altKey: true})),
-      false,
+      false
     );
     assert.equal(
       modifierBoxSelection(gesture({ctrlKey: true, button: 2})),
-      false,
+      false
     );
   });
 });
