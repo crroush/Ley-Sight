@@ -1,7 +1,8 @@
 // src/workers/terrain.ts
-import { WEB_MERCATOR_WORLD_WIDTH_M, WEB_MERCATOR_HALF_WORLD_M } from "./grid";
+import {WEB_MERCATOR_WORLD_WIDTH_M, WEB_MERCATOR_HALF_WORLD_M} from './grid';
 
-export const AWS_TERRARIUM_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
+export const AWS_TERRARIUM_URL =
+  'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 export const TERRAIN_TILE_SIZE = 256;
 export const TERRAIN_MAX_ZOOM = 15;
 
@@ -31,14 +32,18 @@ export class TerrariumTerrainProvider {
     private readonly tileLoader?: (
       z: number,
       x: number,
-      y: number,
-    ) => Promise<Uint8ClampedArray | null>,
+      y: number
+    ) => Promise<Uint8ClampedArray | null>
   ) {}
 
   /**
    * Internal helper to load and decode a tile via OffscreenCanvas
    */
-  private async loadTileData(z: number, x: number, y: number): Promise<Uint8ClampedArray | null> {
+  private async loadTileData(
+    z: number,
+    x: number,
+    y: number
+  ): Promise<Uint8ClampedArray | null> {
     const key = `${z}/${x}/${y}`;
     if (this.tileCache.has(key)) return this.tileCache.get(key)!;
 
@@ -74,12 +79,21 @@ export class TerrariumTerrainProvider {
    * Identifies unique tiles for an entire grid, downloads them in one bulk Promise.all,
    * and synchronously extracts the pixel data in memory.
    */
-  public async sampleGrid(xs: Float64Array, ys: Float64Array, zoom: number): Promise<Float64Array> {
+  public async sampleGrid(
+    xs: Float64Array,
+    ys: Float64Array,
+    zoom: number
+  ): Promise<Float64Array> {
     const n = Math.pow(2, zoom);
     const w = WEB_MERCATOR_WORLD_WIDTH_M;
 
     const requiredTiles = new Set<string>();
-    const tileCoords = new Array<{tx: number, ty: number, px: number, py: number}>(xs.length);
+    const tileCoords = new Array<{
+      tx: number;
+      ty: number;
+      px: number;
+      py: number;
+    }>(xs.length);
 
     // 1. Calculate tile indices for every pixel
     for (let i = 0; i < xs.length; i++) {
@@ -103,18 +117,23 @@ export class TerrariumTerrainProvider {
 
       const key = `${zoom}/${clampedTx}/${clampedTy}`;
       requiredTiles.add(key);
-      tileCoords[i] = { tx: clampedTx, ty: clampedTy, px: clampedPx, py: clampedPy };
+      tileCoords[i] = {
+        tx: clampedTx,
+        ty: clampedTy,
+        px: clampedPx,
+        py: clampedPy,
+      };
     }
 
     // 2. Fetch only the unique tiles needed for this grid (usually 2 to 6 tiles)
-    const fetchPromises = Array.from(requiredTiles).map(key => {
+    const fetchPromises = Array.from(requiredTiles).map((key) => {
       const [z, x, y] = key.split('/').map(Number);
-      return this.loadTileData(z, x, y).then(data => ({ key, data }));
+      return this.loadTileData(z, x, y).then((data) => ({key, data}));
     });
 
     const tileDataMap = new Map<string, Uint8ClampedArray | null>();
     const loadedTiles = await Promise.all(fetchPromises);
-    for (const { key, data } of loadedTiles) {
+    for (const {key, data} of loadedTiles) {
       tileDataMap.set(key, data);
     }
 
@@ -130,7 +149,7 @@ export class TerrariumTerrainProvider {
         const r = data[idx];
         const g = data[idx + 1];
         const b = data[idx + 2];
-        results[i] = (r * 256.0 + g + b / 256.0) - 32768.0;
+        results[i] = r * 256.0 + g + b / 256.0 - 32768.0;
       } else {
         // A Terrarium pixel containing zero is a valid sea-level sample.  A
         // tile which could not be read is different and must remain
@@ -144,8 +163,16 @@ export class TerrariumTerrainProvider {
   }
 
   // Retain your existing samplePoint logic for the Inspector Tool
-  public async samplePoint(xM: number, yM: number, zoom: number): Promise<number> {
-    const arr = await this.sampleGrid(new Float64Array([xM]), new Float64Array([yM]), zoom);
+  public async samplePoint(
+    xM: number,
+    yM: number,
+    zoom: number
+  ): Promise<number> {
+    const arr = await this.sampleGrid(
+      new Float64Array([xM]),
+      new Float64Array([yM]),
+      zoom
+    );
     return arr[0];
   }
 }

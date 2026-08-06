@@ -1,34 +1,24 @@
-import assert from "node:assert/strict";
-import test from "node:test";
-import {createReferenceRandom, createReferenceRandomGenerator} from "./referenceData";
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  createReferenceRandom,
+  createReferenceRandomGenerator,
+} from './referenceData';
 
 const EXPECTED = new Map<number, readonly number[]>([
-  [7, [
-    0.625095466604667,
-    0.8972138009695755,
-    0.7756856902451935,
-  ]],
-  [17, [
-    0.8450747927979015,
-    0.16097309116910696,
-    0.5577445473656921,
-  ]],
-  [42, [
-    0.7739560485559633,
-    0.4388784397520523,
-    0.8585979199113825,
-  ]],
-  [43, [
-    0.6522992627009107,
-    0.04377532363899661,
-    0.020029586874216854,
-  ]],
+  [7, [0.625095466604667, 0.8972138009695755, 0.7756856902451935]],
+  [17, [0.8450747927979015, 0.16097309116910696, 0.5577445473656921]],
+  [42, [0.7739560485559633, 0.4388784397520523, 0.8585979199113825]],
+  [43, [0.6522992627009107, 0.04377532363899661, 0.020029586874216854]],
 ]);
 
-test("Reference random streams match NumPy default_rng PCG64 output", () => {
+test('Reference random streams match NumPy default_rng PCG64 output', () => {
   for (const [seed, expected] of EXPECTED) {
     const random = createReferenceRandom(seed);
-    assert.deepEqual(expected.map(() => random()), expected);
+    assert.deepEqual(
+      expected.map(() => random()),
+      expected
+    );
   }
 });
 

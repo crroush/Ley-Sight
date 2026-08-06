@@ -1,8 +1,4 @@
-type TypedArray =
-  | Float64Array
-  | Float32Array
-  | Uint32Array
-  | Uint8Array;
+type TypedArray = Float64Array | Float32Array | Uint32Array | Uint8Array;
 
 type TypedArrayConstructor<T extends TypedArray> = {
   new (length: number): T;

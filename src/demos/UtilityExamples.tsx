@@ -1,28 +1,23 @@
-import {useEffect, useRef, useState} from "react";
-import Feature from "ol/Feature.js";
-import LineString from "ol/geom/LineString.js";
-import Point from "ol/geom/Point.js";
-import ImageLayer from "ol/layer/Image.js";
-import VectorLayer from "ol/layer/Vector.js";
-import TileLayer from "ol/layer/Tile.js";
-import Map from "ol/Map.js";
-import View from "ol/View.js";
-import {createEmpty, extend} from "ol/extent.js";
-import {fromLonLat, toLonLat, transformExtent} from "ol/proj.js";
-import {getDistance} from "ol/sphere.js";
-import ImageStatic from "ol/source/ImageStatic.js";
-import OSM from "ol/source/OSM.js";
-import VectorSource from "ol/source/Vector.js";
-import {
-  Circle as CircleStyle,
-  Fill,
-  Stroke,
-  Style,
-} from "ol/style.js";
+import {useEffect, useRef, useState} from 'react';
+import Feature from 'ol/Feature.js';
+import LineString from 'ol/geom/LineString.js';
+import Point from 'ol/geom/Point.js';
+import ImageLayer from 'ol/layer/Image.js';
+import VectorLayer from 'ol/layer/Vector.js';
+import TileLayer from 'ol/layer/Tile.js';
+import Map from 'ol/Map.js';
+import View from 'ol/View.js';
+import {createEmpty, extend} from 'ol/extent.js';
+import {fromLonLat, toLonLat, transformExtent} from 'ol/proj.js';
+import {getDistance} from 'ol/sphere.js';
+import ImageStatic from 'ol/source/ImageStatic.js';
+import OSM from 'ol/source/OSM.js';
+import VectorSource from 'ol/source/Vector.js';
+import {Circle as CircleStyle, Fill, Stroke, Style} from 'ol/style.js';
 import {
   installReferenceCoordinateDisplay,
   type ReferenceCoordinateDisplay,
-} from "../map/referenceCoordinateDisplay";
+} from '../map/referenceCoordinateDisplay';
 
 function landmarkStyle(color: string, stroke: string, radius: number): Style {
   return new Style({
@@ -54,15 +49,15 @@ export function MeasurementExampleApp() {
 
   useEffect(() => {
     if (!mapTargetRef.current) return;
-    document.title = "Interactive Distance Measurement Tool";
+    document.title = 'Interactive Distance Measurement Tool';
     const landmarkSource = new VectorSource({
       features: [
-        [37.7749, -122.4194, "San Francisco City Hall"],
-        [37.8199, -122.4783, "Golden Gate Bridge"],
-        [37.8088, -122.4098, "Ferry Building"],
+        [37.7749, -122.4194, 'San Francisco City Hall'],
+        [37.8199, -122.4783, 'Golden Gate Bridge'],
+        [37.8088, -122.4098, 'Ferry Building'],
       ].map(([latitude, longitude, name]) => {
         const feature = new Feature(
-          new Point(fromLonLat([Number(longitude), Number(latitude)])),
+          new Point(fromLonLat([Number(longitude), Number(latitude)]))
         );
         feature.setId(String(name));
         return feature;
@@ -71,16 +66,16 @@ export function MeasurementExampleApp() {
     const measurementLayer = new VectorLayer({
       source: measurementSourceRef.current,
       style: (feature) =>
-        feature.getGeometry()?.getType() === "Point"
+        feature.getGeometry()?.getType() === 'Point'
           ? new Style({
               image: new CircleStyle({
                 radius: 5,
-                fill: new Fill({color: "#fff"}),
-                stroke: new Stroke({color: "#22a6d5", width: 2}),
+                fill: new Fill({color: '#fff'}),
+                stroke: new Stroke({color: '#22a6d5', width: 2}),
               }),
             })
           : new Style({
-              stroke: new Stroke({color: "#22a6d5", width: 3}),
+              stroke: new Stroke({color: '#22a6d5', width: 3}),
             }),
     });
     const map = new Map({
@@ -89,7 +84,7 @@ export function MeasurementExampleApp() {
         new TileLayer({source: new OSM({transition: 0})}),
         new VectorLayer({
           source: landmarkSource,
-          style: landmarkStyle("blue", "darkblue", 8),
+          style: landmarkStyle('blue', 'darkblue', 8),
         }),
         measurementLayer,
       ],
@@ -100,9 +95,9 @@ export function MeasurementExampleApp() {
     });
     const coordinateDisplay = installReferenceCoordinateDisplay(
       map,
-      mapTargetRef.current,
+      mapTargetRef.current
     );
-    map.on("singleclick", (event) => {
+    map.on('singleclick', (event) => {
       if (!enabledRef.current) return;
       const coordinate = event.coordinate as [number, number];
       const previous = coordinatesRef.current.at(-1);
@@ -111,17 +106,16 @@ export function MeasurementExampleApp() {
       const distance = previous
         ? getDistance(toLonLat(previous), [longitude, latitude])
         : null;
-      setRows((current) => [
-        ...current,
-        {distance, latitude, longitude},
-      ]);
-      measurementSourceRef.current.addFeature(new Feature(new Point(coordinate)));
-      const existingLine = measurementSourceRef.current.getFeatureById("path");
+      setRows((current) => [...current, {distance, latitude, longitude}]);
+      measurementSourceRef.current.addFeature(
+        new Feature(new Point(coordinate))
+      );
+      const existingLine = measurementSourceRef.current.getFeatureById('path');
       if (existingLine) {
         existingLine.setGeometry(new LineString(coordinatesRef.current));
       } else {
         const line = new Feature(new LineString(coordinatesRef.current));
-        line.setId("path");
+        line.setId('path');
         measurementSourceRef.current.addFeature(line);
       }
     });
@@ -136,7 +130,7 @@ export function MeasurementExampleApp() {
 
   const totalMeters = rows.reduce(
     (total, row) => total + (row.distance ?? 0),
-    0,
+    0
   );
   const clear = (): void => {
     coordinatesRef.current = [];
@@ -150,8 +144,7 @@ export function MeasurementExampleApp() {
         className="reference-measurement-layout"
         ref={layoutRef}
         style={{
-          gridTemplateColumns:
-            `minmax(500px, ${mapPercent}%) 6px minmax(280px, 1fr)`,
+          gridTemplateColumns: `minmax(500px, ${mapPercent}%) 6px minmax(280px, 1fr)`,
         }}
       >
         <div className="reference-measurement-map-column">
@@ -161,7 +154,7 @@ export function MeasurementExampleApp() {
               side panel will show each segment distance and the running total.
             </p>
             <button
-              className={enabled ? "is-danger" : ""}
+              className={enabled ? 'is-danger' : ''}
               type="button"
               onClick={() => {
                 enabledRef.current = !enabled;
@@ -169,9 +162,7 @@ export function MeasurementExampleApp() {
                 if (!enabled) setClearEnabled(true);
               }}
             >
-              {enabled
-                ? "Disable Measurement Mode"
-                : "Enable Measurement Mode"}
+              {enabled ? 'Disable Measurement Mode' : 'Enable Measurement Mode'}
             </button>
             <button type="button" disabled={!clearEnabled} onClick={clear}>
               Clear Measurements
@@ -187,7 +178,7 @@ export function MeasurementExampleApp() {
           tabIndex={0}
           onPointerDown={(event) => {
             event.currentTarget.setPointerCapture(event.pointerId);
-            event.currentTarget.classList.add("is-dragging");
+            event.currentTarget.classList.add('is-dragging');
           }}
           onPointerMove={(event) => {
             if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
@@ -201,15 +192,15 @@ export function MeasurementExampleApp() {
             if (event.currentTarget.hasPointerCapture(event.pointerId)) {
               event.currentTarget.releasePointerCapture(event.pointerId);
             }
-            event.currentTarget.classList.remove("is-dragging");
+            event.currentTarget.classList.remove('is-dragging');
           }}
           onPointerCancel={(event) =>
-            event.currentTarget.classList.remove("is-dragging")
+            event.currentTarget.classList.remove('is-dragging')
           }
           onKeyDown={(event) => {
-            if (event.key === "ArrowLeft") {
+            if (event.key === 'ArrowLeft') {
               setMapPercent((current) => Math.max(45, current - 2));
-            } else if (event.key === "ArrowRight") {
+            } else if (event.key === 'ArrowRight') {
               setMapPercent((current) => Math.min(80, current + 2));
             } else {
               return;
@@ -244,17 +235,17 @@ export function CoordinateDisplayExampleApp() {
 
   useEffect(() => {
     if (!mapTargetRef.current) return;
-    document.title = "Coordinate Display Toggle";
+    document.title = 'Coordinate Display Toggle';
     const cities = [
-      [37.7749, -122.4194, "San Francisco", "red"],
-      [37.8044, -122.2712, "Oakland", "blue"],
-      [37.3382, -121.8863, "San Jose", "green"],
+      [37.7749, -122.4194, 'San Francisco', 'red'],
+      [37.8044, -122.2712, 'Oakland', 'blue'],
+      [37.3382, -121.8863, 'San Jose', 'green'],
     ].map(([latitude, longitude, name, color]) => {
       const feature = new Feature(
-        new Point(fromLonLat([Number(longitude), Number(latitude)])),
+        new Point(fromLonLat([Number(longitude), Number(latitude)]))
       );
       feature.setId(String(name));
-      feature.set("color", color);
+      feature.set('color', color);
       return feature;
     });
     const map = new Map({
@@ -264,7 +255,7 @@ export function CoordinateDisplayExampleApp() {
         new VectorLayer({
           source: new VectorSource({features: cities}),
           style: (feature) =>
-            landmarkStyle(String(feature.get("color")), "black", 10),
+            landmarkStyle(String(feature.get('color')), 'black', 10),
         }),
       ],
       view: new View({
@@ -274,7 +265,7 @@ export function CoordinateDisplayExampleApp() {
     });
     const coordinateDisplay = installReferenceCoordinateDisplay(
       map,
-      mapTargetRef.current,
+      mapTargetRef.current
     );
     coordinateDisplayRef.current = coordinateDisplay;
     return () => {
@@ -299,10 +290,10 @@ export function CoordinateDisplayExampleApp() {
             coordinateDisplayRef.current?.setVisible(next);
           }}
         >
-          {visible ? "Hide Coordinates" : "Show Coordinates"}
+          {visible ? 'Hide Coordinates' : 'Show Coordinates'}
         </button>
-        <strong className={visible ? "is-enabled" : "is-disabled"}>
-          Coordinates shown: {visible ? "Enabled" : "Disabled"}
+        <strong className={visible ? 'is-enabled' : 'is-disabled'}>
+          Coordinates shown: {visible ? 'Enabled' : 'Disabled'}
         </strong>
       </section>
       <div className="reference-map-fill" ref={mapTargetRef} />
@@ -311,11 +302,11 @@ export function CoordinateDisplayExampleApp() {
 }
 
 function demoRasterUrl(): string {
-  const canvas = document.createElement("canvas");
+  const canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 512;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("2D canvas is unavailable.");
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('2D canvas is unavailable.');
   const polygon = [
     [0.1, 0.25],
     [0.55, 0.15],
@@ -330,8 +321,8 @@ function demoRasterUrl(): string {
     else context.lineTo(x * 512, y * 512);
   });
   context.closePath();
-  context.fillStyle = "rgba(45, 130, 255, 0.667)";
-  context.strokeStyle = "rgba(0, 0, 0, 0.863)";
+  context.fillStyle = 'rgba(45, 130, 255, 0.667)';
+  context.strokeStyle = 'rgba(0, 0, 0, 0.863)';
   context.lineWidth = 3;
   context.fill();
   context.stroke();
@@ -347,18 +338,18 @@ function demoRasterUrl(): string {
     else context.lineTo(x * 512, y * 512);
   });
   context.closePath();
-  context.fillStyle = "rgba(255, 200, 40, 0.706)";
-  context.strokeStyle = "rgba(20, 20, 20, 0.863)";
+  context.fillStyle = 'rgba(255, 200, 40, 0.706)';
+  context.strokeStyle = 'rgba(20, 20, 20, 0.863)';
   context.lineWidth = 2;
   context.fill();
   context.stroke();
-  return canvas.toDataURL("image/png");
+  return canvas.toDataURL('image/png');
 }
 
 const FIT_RASTER_EXTENT = transformExtent(
   [-122.8, 33, -116.8, 38.8],
-  "EPSG:4326",
-  "EPSG:3857",
+  'EPSG:4326',
+  'EPSG:3857'
 );
 
 /** Browser port of examples/15_load_data_and_zoom.py. */
@@ -370,20 +361,20 @@ export function FitToDataExampleApp() {
   const [pointsLoaded, setPointsLoaded] = useState(false);
   const [rasterLoaded, setRasterLoaded] = useState(false);
   const [status, setStatus] = useState(
-    "Click 'Load Sample Data', then 'Zoom to Loaded Data'.",
+    "Click 'Load Sample Data', then 'Zoom to Loaded Data'."
   );
 
   useEffect(() => {
     if (!mapTargetRef.current) return;
-    document.title = "Load Data and Zoom Example";
+    document.title = 'Load Data and Zoom Example';
     const vectorLayer = new VectorLayer({
       source: vectorSourceRef.current,
       style: (feature) =>
         new Style({
           image: new CircleStyle({
             radius: 8,
-            fill: new Fill({color: String(feature.get("color"))}),
-            stroke: new Stroke({color: "black", width: 1.5}),
+            fill: new Fill({color: String(feature.get('color'))}),
+            stroke: new Stroke({color: 'black', width: 1.5}),
           }),
         }),
     });
@@ -398,7 +389,7 @@ export function FitToDataExampleApp() {
     });
     const coordinateDisplay = installReferenceCoordinateDisplay(
       map,
-      mapTargetRef.current,
+      mapTargetRef.current
     );
     mapRef.current = map;
     return () => {
@@ -411,41 +402,43 @@ export function FitToDataExampleApp() {
   const loadPoints = (): void => {
     vectorSourceRef.current.clear();
     const points = [
-      [37.7749, -122.4194, "sf", "tomato"],
-      [38.5816, -121.4944, "sac", "tomato"],
-      [36.7378, -119.7871, "fre", "tomato"],
-      [34.0522, -118.2437, "la", "royalblue"],
-      [32.7157, -117.1611, "sd", "royalblue"],
-      [33.7455, -117.8677, "ana", "royalblue"],
+      [37.7749, -122.4194, 'sf', 'tomato'],
+      [38.5816, -121.4944, 'sac', 'tomato'],
+      [36.7378, -119.7871, 'fre', 'tomato'],
+      [34.0522, -118.2437, 'la', 'royalblue'],
+      [32.7157, -117.1611, 'sd', 'royalblue'],
+      [33.7455, -117.8677, 'ana', 'royalblue'],
     ];
-    vectorSourceRef.current.addFeatures(points.map(
-      ([latitude, longitude, id, color]) => {
+    vectorSourceRef.current.addFeatures(
+      points.map(([latitude, longitude, id, color]) => {
         const feature = new Feature(
-          new Point(fromLonLat([Number(longitude), Number(latitude)])),
+          new Point(fromLonLat([Number(longitude), Number(latitude)]))
         );
         feature.setId(String(id));
-        feature.set("color", color);
+        feature.set('color', color);
         return feature;
-      },
-    ));
+      })
+    );
     setPointsLoaded(true);
-    setStatus("Data loaded: 6 points across California.");
+    setStatus('Data loaded: 6 points across California.');
   };
 
   const loadRaster = (): void => {
-    rasterLayerRef.current.setSource(new ImageStatic({
-      url: demoRasterUrl(),
-      imageExtent: FIT_RASTER_EXTENT,
-      projection: "EPSG:3857",
-    }));
+    rasterLayerRef.current.setSource(
+      new ImageStatic({
+        url: demoRasterUrl(),
+        imageExtent: FIT_RASTER_EXTENT,
+        projection: 'EPSG:3857',
+      })
+    );
     setRasterLoaded(true);
-    setStatus("Raster loaded in California extent.");
+    setStatus('Raster loaded in California extent.');
   };
 
   const fit = (): void => {
     const map = mapRef.current;
     if (!map || (!pointsLoaded && !rasterLoaded)) {
-      setStatus("Load points and/or raster first.");
+      setStatus('Load points and/or raster first.');
       return;
     }
     const extent = createEmpty();
@@ -457,15 +450,21 @@ export function FitToDataExampleApp() {
       maxZoom: 6,
       duration: 250,
     });
-    setStatus("Applied fit_to_data() across loaded map layers.");
+    setStatus('Applied fit_to_data() across loaded map layers.');
   };
 
   return (
     <main className="reference-example-window">
       <section className="reference-fit-controls">
-        <button type="button" onClick={loadPoints}>Load Sample Data</button>
-        <button type="button" onClick={fit}>Zoom to Loaded Data</button>
-        <button type="button" onClick={loadRaster}>Load Raster</button>
+        <button type="button" onClick={loadPoints}>
+          Load Sample Data
+        </button>
+        <button type="button" onClick={fit}>
+          Zoom to Loaded Data
+        </button>
+        <button type="button" onClick={loadRaster}>
+          Load Raster
+        </button>
         <button
           type="button"
           onClick={() =>

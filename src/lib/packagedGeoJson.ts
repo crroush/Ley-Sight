@@ -1,14 +1,15 @@
 export async function decodePackagedResponse(
-  response: Response,
+  response: Response
 ): Promise<string> {
   const bytes = new Uint8Array(await response.arrayBuffer());
   const isGzip = bytes[0] === 0x1f && bytes[1] === 0x8b;
   if (!isGzip) return new TextDecoder().decode(bytes);
-  if (typeof DecompressionStream === "undefined") {
-    throw new Error("This browser cannot decompress packaged map resources.");
+  if (typeof DecompressionStream === 'undefined') {
+    throw new Error('This browser cannot decompress packaged map resources.');
   }
-  const stream = new Blob([bytes]).stream()
-    .pipeThrough(new DecompressionStream("gzip"));
+  const stream = new Blob([bytes])
+    .stream()
+    .pipeThrough(new DecompressionStream('gzip'));
   return await new Response(stream).text();
 }
 
@@ -19,12 +20,12 @@ export async function decodePackagedResponse(
  * supports both contracts and prevents accidental double decompression.
  */
 export async function loadPackagedGeoJson(
-  resourceName: "countries" | "lakes",
+  resourceName: 'countries' | 'lakes'
 ): Promise<object> {
   const response = await fetch(`/resources/${resourceName}.geojson.gz`);
   if (!response.ok) {
     throw new Error(
-      `${resourceName}.geojson.gz returned HTTP ${response.status}.`,
+      `${resourceName}.geojson.gz returned HTTP ${response.status}.`
     );
   }
   return JSON.parse(await decodePackagedResponse(response)) as object;

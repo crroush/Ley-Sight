@@ -1,12 +1,10 @@
-import type {
-  CsvColumnMapping,
-} from "../lib/types";
-import type {ColorPalette} from "../lib/colorPalettes";
-import type {ColorValueMode} from "../lib/colorValueModes";
+import type {CsvColumnMapping} from '../lib/types';
+import type {ColorPalette} from '../lib/colorPalettes';
+import type {ColorValueMode} from '../lib/colorValueModes';
 
-const STORAGE_DIRECTORY = "leysight";
-const FILES_DIRECTORY = "csv";
-const SESSION_MANIFEST_PREFIX = "workspace-v1-";
+const STORAGE_DIRECTORY = 'leysight';
+const FILES_DIRECTORY = 'csv';
+const SESSION_MANIFEST_PREFIX = 'workspace-v1-';
 const MANIFEST_VERSION = 1;
 
 export type PersistedCsvFile = {
@@ -44,9 +42,9 @@ export type PersistedWorkspaceRecord = {
 };
 
 function storageManager(): StorageManager | null {
-  return typeof navigator === "undefined" ||
-      !navigator.storage ||
-      typeof navigator.storage.getDirectory !== "function"
+  return typeof navigator === 'undefined' ||
+    !navigator.storage ||
+    typeof navigator.storage.getDirectory !== 'function'
     ? null
     : navigator.storage;
 }
@@ -55,25 +53,21 @@ export function opfsSupported(): boolean {
   return storageManager() !== null;
 }
 
-async function appDirectory(
-  create = true,
-): Promise<FileSystemDirectoryHandle> {
+async function appDirectory(create = true): Promise<FileSystemDirectoryHandle> {
   const storage = storageManager();
-  if (!storage) throw new Error("This browser does not support OPFS.");
+  if (!storage) throw new Error('This browser does not support OPFS.');
   const root = await storage.getDirectory();
   return root.getDirectoryHandle(STORAGE_DIRECTORY, {create});
 }
 
-async function csvDirectory(
-  create = true,
-): Promise<FileSystemDirectoryHandle> {
+async function csvDirectory(create = true): Promise<FileSystemDirectoryHandle> {
   return (await appDirectory(create)).getDirectoryHandle(FILES_DIRECTORY, {
     create,
   });
 }
 
 function storageFileId(): string {
-  return typeof crypto.randomUUID === "function"
+  return typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(16)}`;
 }
@@ -97,14 +91,14 @@ export async function persistCsvFile(file: File): Promise<PersistedCsvFile> {
   return {
     id,
     name: file.name,
-    type: file.type || "text/csv",
+    type: file.type || 'text/csv',
     size: file.size,
     lastModified: file.lastModified,
   };
 }
 
 export async function materializeCsvFile(
-  record: PersistedCsvFile,
+  record: PersistedCsvFile
 ): Promise<File> {
   const directory = await csvDirectory(false);
   const handle = await directory.getFileHandle(record.id);
@@ -112,18 +106,18 @@ export async function materializeCsvFile(
   if (stored.size !== record.size) {
     throw new Error(
       `${record.name} is incomplete in persistent storage ` +
-      `(${stored.size.toLocaleString()} of ${record.size.toLocaleString()} bytes).`,
+        `(${stored.size.toLocaleString()} of ${record.size.toLocaleString()} bytes).`
     );
   }
   return new File([stored], record.name, {
-    type: record.type || stored.type || "text/csv",
+    type: record.type || stored.type || 'text/csv',
     lastModified: record.lastModified,
   });
 }
 
 export async function saveWorkspaceManifest(
   workspace: PersistedWorkspace,
-  sessionId: string,
+  sessionId: string
 ): Promise<void> {
   const directory = await appDirectory();
   const fileName = `${SESSION_MANIFEST_PREFIX}${sessionId}.json`;
@@ -134,13 +128,15 @@ export async function saveWorkspaceManifest(
 }
 
 function sessionIdFromManifestName(name: string): string | null {
-  if (!name.startsWith(SESSION_MANIFEST_PREFIX) || !name.endsWith(".json")) {
+  if (!name.startsWith(SESSION_MANIFEST_PREFIX) || !name.endsWith('.json')) {
     return null;
   }
-  return name.slice(SESSION_MANIFEST_PREFIX.length, -".json".length) || null;
+  return name.slice(SESSION_MANIFEST_PREFIX.length, -'.json'.length) || null;
 }
 
-export async function loadWorkspaceManifests(): Promise<PersistedWorkspaceRecord[]> {
+export async function loadWorkspaceManifests(): Promise<
+  PersistedWorkspaceRecord[]
+> {
   if (!opfsSupported()) return [];
   try {
     const directory = await appDirectory(false);
@@ -150,7 +146,7 @@ export async function loadWorkspaceManifests(): Promise<PersistedWorkspaceRecord
     };
     for await (const [name, entry] of entries.entries()) {
       const sessionId = sessionIdFromManifestName(name);
-      if (!sessionId || entry.kind !== "file") continue;
+      if (!sessionId || entry.kind !== 'file') continue;
       const file = await (entry as FileSystemFileHandle).getFile();
       const workspace = parseWorkspaceManifest(JSON.parse(await file.text()));
       if (workspace.tabs.length) {
@@ -159,7 +155,7 @@ export async function loadWorkspaceManifests(): Promise<PersistedWorkspaceRecord
     }
     return records.sort((left, right) => right.savedAt - left.savedAt);
   } catch (error) {
-    if (error instanceof DOMException && error.name === "NotFoundError") {
+    if (error instanceof DOMException && error.name === 'NotFoundError') {
       return [];
     }
     throw error;
@@ -167,51 +163,54 @@ export async function loadWorkspaceManifests(): Promise<PersistedWorkspaceRecord
 }
 
 function isPersistedFile(value: unknown): value is PersistedCsvFile {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== 'object') return false;
   const file = value as Partial<PersistedCsvFile>;
   return (
-    typeof file.id === "string" &&
-    typeof file.name === "string" &&
-    typeof file.type === "string" &&
-    typeof file.size === "number" &&
-    typeof file.lastModified === "number"
+    typeof file.id === 'string' &&
+    typeof file.name === 'string' &&
+    typeof file.type === 'string' &&
+    typeof file.size === 'number' &&
+    typeof file.lastModified === 'number'
   );
 }
 
 function isOptionalFiniteRange(
-  value: unknown,
+  value: unknown
 ): value is [number, number] | undefined {
-  return value === undefined || (
-    Array.isArray(value) &&
-    value.length === 2 &&
-    value.every((entry) => typeof entry === "number" && Number.isFinite(entry)) &&
-    value[0] <= value[1]
+  return (
+    value === undefined ||
+    (Array.isArray(value) &&
+      value.length === 2 &&
+      value.every(
+        (entry) => typeof entry === 'number' && Number.isFinite(entry)
+      ) &&
+      value[0] <= value[1])
   );
 }
 
 function isPersistedTab(value: unknown): value is PersistedCsvTab {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== 'object') return false;
   const tab = value as Partial<PersistedCsvTab>;
   return (
-    typeof tab.storageId === "string" &&
-    typeof tab.schemaKey === "string" &&
-    typeof tab.title === "string" &&
+    typeof tab.storageId === 'string' &&
+    typeof tab.schemaKey === 'string' &&
+    typeof tab.title === 'string' &&
     Array.isArray(tab.columns) &&
-    tab.columns.every((column) => typeof column === "string") &&
+    tab.columns.every((column) => typeof column === 'string') &&
     Array.isArray(tab.files) &&
     tab.files.every(isPersistedFile) &&
     Boolean(tab.mapping) &&
-    typeof tab.colorField === "string" &&
-    typeof tab.colorPalette === "string" &&
-    typeof tab.colorValueMode === "string" &&
+    typeof tab.colorField === 'string' &&
+    typeof tab.colorPalette === 'string' &&
+    typeof tab.colorValueMode === 'string' &&
     isOptionalFiniteRange(tab.timeFilterRange) &&
     isOptionalFiniteRange(tab.timeViewRange)
   );
 }
 
 export function parseWorkspaceManifest(value: unknown): PersistedWorkspace {
-  if (!value || typeof value !== "object") {
-    throw new Error("The saved LeySight workspace manifest is invalid.");
+  if (!value || typeof value !== 'object') {
+    throw new Error('The saved LeySight workspace manifest is invalid.');
   }
   const workspace = value as Partial<PersistedWorkspace>;
   if (
@@ -219,12 +218,12 @@ export function parseWorkspaceManifest(value: unknown): PersistedWorkspace {
     !Array.isArray(workspace.tabs) ||
     !workspace.tabs.every(isPersistedTab)
   ) {
-    throw new Error("The saved LeySight workspace uses an unsupported format.");
+    throw new Error('The saved LeySight workspace uses an unsupported format.');
   }
   return {
     version: MANIFEST_VERSION,
     activeStorageId:
-      typeof workspace.activeStorageId === "string"
+      typeof workspace.activeStorageId === 'string'
         ? workspace.activeStorageId
         : undefined,
     tabs: workspace.tabs,
@@ -233,7 +232,7 @@ export function parseWorkspaceManifest(value: unknown): PersistedWorkspace {
 
 export async function requestPersistentStorage(): Promise<boolean> {
   const storage = storageManager();
-  if (!storage || typeof storage.persist !== "function") return false;
+  if (!storage || typeof storage.persist !== 'function') return false;
   return storage.persist();
 }
 
@@ -241,11 +240,11 @@ export async function clearPersistedWorkspace(): Promise<void> {
   const storage = storageManager();
   if (!storage) return;
   const root = await storage.getDirectory();
-  await root.removeEntry(STORAGE_DIRECTORY, {recursive: true}).catch(
-    (error: unknown) => {
-      if (!(error instanceof DOMException && error.name === "NotFoundError")) {
+  await root
+    .removeEntry(STORAGE_DIRECTORY, {recursive: true})
+    .catch((error: unknown) => {
+      if (!(error instanceof DOMException && error.name === 'NotFoundError')) {
         throw error;
       }
-    },
-  );
+    });
 }

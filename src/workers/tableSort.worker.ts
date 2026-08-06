@@ -1,12 +1,12 @@
 /// <reference lib="webworker" />
 
-import {sourceIndexPosition} from "../lib/tableSelection";
+import {sourceIndexPosition} from '../lib/tableSelection';
 
-type SortDirection = "ascending" | "descending";
+type SortDirection = 'ascending' | 'descending';
 
 type SortMessage =
   | {
-      type: "sort-index";
+      type: 'sort-index';
       requestId: number;
       rowCount: number;
       direction: SortDirection;
@@ -14,7 +14,7 @@ type SortMessage =
       visibleIndices: Uint32Array<ArrayBuffer> | null;
     }
   | {
-      type: "sort-number";
+      type: 'sort-number';
       requestId: number;
       values: Float64Array<ArrayBuffer> | Float32Array<ArrayBuffer>;
       direction: SortDirection;
@@ -23,7 +23,7 @@ type SortMessage =
       visibleIndices: Uint32Array<ArrayBuffer> | null;
     }
   | {
-      type: "sort-category";
+      type: 'sort-category';
       requestId: number;
       codes: Uint32Array<ArrayBuffer>;
       dictionary: string[];
@@ -32,14 +32,14 @@ type SortMessage =
       visibleIndices: Uint32Array<ArrayBuffer> | null;
     }
   | {
-      type: "filter";
+      type: 'filter';
       requestId: number;
       focusIndex: number;
       visibleIndices: Uint32Array<ArrayBuffer> | null;
     };
 
 type SortResult = {
-  type: "result";
+  type: 'result';
   requestId: number;
   indices: Uint32Array<ArrayBuffer>;
   focusPosition: number;
@@ -50,7 +50,7 @@ let fullOrder = new Uint32Array(0) as Uint32Array<ArrayBuffer>;
 
 function naturalOrder(
   rowCount: number,
-  descending: boolean,
+  descending: boolean
 ): Uint32Array<ArrayBuffer> {
   const order = new Uint32Array(rowCount);
   for (let index = 0; index < rowCount; index += 1) {
@@ -61,7 +61,7 @@ function naturalOrder(
 
 function numericOrder(
   values: Float64Array | Float32Array,
-  descending: boolean,
+  descending: boolean
 ): Uint32Array<ArrayBuffer> {
   const order = naturalOrder(values.length, false);
   const direction = descending ? -1 : 1;
@@ -87,17 +87,17 @@ function numericOrder(
 function categoryOrder(
   codes: Uint32Array,
   dictionary: readonly string[],
-  descending: boolean,
+  descending: boolean
 ): Uint32Array<ArrayBuffer> {
   const collator = new Intl.Collator(undefined, {
     numeric: true,
-    sensitivity: "base",
+    sensitivity: 'base',
   });
   const sortedCodes = naturalOrder(dictionary.length, false);
   sortedCodes.sort((first, second) => {
     const compared = collator.compare(
-      dictionary[first] ?? "",
-      dictionary[second] ?? "",
+      dictionary[first] ?? '',
+      dictionary[second] ?? ''
     );
     return (descending ? -compared : compared) || first - second;
   });
@@ -125,7 +125,7 @@ function categoryOrder(
 function filteredOrder(
   order: Uint32Array,
   visibleIndices: Uint32Array | null,
-  focusIndex: number,
+  focusIndex: number
 ): {indices: Uint32Array<ArrayBuffer>; focusPosition: number} {
   if (!visibleIndices) {
     const indices = order.slice() as Uint32Array<ArrayBuffer>;
@@ -157,15 +157,15 @@ function filteredOrder(
 function emit(
   requestId: number,
   visibleIndices: Uint32Array | null,
-  focusIndex: number,
+  focusIndex: number
 ): void {
   const {indices, focusPosition} = filteredOrder(
     fullOrder,
     visibleIndices,
-    focusIndex,
+    focusIndex
   );
   const result: SortResult = {
-    type: "result",
+    type: 'result',
     requestId,
     indices,
     focusPosition,
@@ -175,24 +175,20 @@ function emit(
 
 worker.onmessage = (event: MessageEvent<SortMessage>): void => {
   const message = event.data;
-  if (message.type === "filter") {
+  if (message.type === 'filter') {
     emit(message.requestId, message.visibleIndices, message.focusIndex);
     return;
   }
-  const descending = message.direction === "descending";
-  if (message.type === "sort-index") {
+  const descending = message.direction === 'descending';
+  if (message.type === 'sort-index') {
     fullOrder = naturalOrder(message.rowCount, descending);
-  } else if (message.type === "sort-number") {
+  } else if (message.type === 'sort-number') {
     fullOrder = numericOrder(
       message.values,
-      message.invert ? !descending : descending,
+      message.invert ? !descending : descending
     );
   } else {
-    fullOrder = categoryOrder(
-      message.codes,
-      message.dictionary,
-      descending,
-    );
+    fullOrder = categoryOrder(message.codes, message.dictionary, descending);
   }
   emit(message.requestId, message.visibleIndices, message.focusIndex);
 };

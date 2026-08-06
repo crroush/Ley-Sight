@@ -4,9 +4,15 @@ export function buildFineTimeHistogram(
   values: Float64Array,
   minimum: number,
   maximum: number,
-  maximumBins = 262_144,
+  maximumBins = 262_144
 ): Uint32Array<ArrayBuffer> {
-  return buildMaskedTimeHistogram(values, undefined, minimum, maximum, maximumBins);
+  return buildMaskedTimeHistogram(
+    values,
+    undefined,
+    minimum,
+    maximum,
+    maximumBins
+  );
 }
 
 export function buildMaskedTimeHistogram(
@@ -14,11 +20,11 @@ export function buildMaskedTimeHistogram(
   mask: Uint8Array | undefined,
   minimum: number,
   maximum: number,
-  maximumBins = 262_144,
+  maximumBins = 262_144
 ): Uint32Array<ArrayBuffer> {
   const targetBins = Math.min(
     maximumBins,
-    Math.max(96, 2 ** Math.ceil(Math.log2(Math.max(1, values.length)))),
+    Math.max(96, 2 ** Math.ceil(Math.log2(Math.max(1, values.length))))
   );
   const counts = new Uint32Array(targetBins);
   if (!Number.isFinite(minimum) || !Number.isFinite(maximum)) return counts;
@@ -31,8 +37,8 @@ export function buildMaskedTimeHistogram(
       0,
       Math.min(
         counts.length - 1,
-        Math.floor(((value - minimum) / span) * counts.length),
-      ),
+        Math.floor(((value - minimum) / span) * counts.length)
+      )
     );
     counts[bin] += 1;
   }
@@ -44,12 +50,12 @@ export function clampTimeRange(
   end: number,
   minimum: number,
   maximum: number,
-  minimumSpan = 1,
+  minimumSpan = 1
 ): TimeRange {
   const domainSpan = Math.max(minimumSpan, maximum - minimum);
   const span = Math.max(
     minimumSpan,
-    Math.min(domainSpan, Math.abs(end - start)),
+    Math.min(domainSpan, Math.abs(end - start))
   );
   let nextStart = Math.max(minimum, Math.min(start, maximum - span));
   let nextEnd = nextStart + span;
@@ -65,14 +71,14 @@ export function moveFixedTimeWindow(
   end: number,
   delta: number,
   minimum: number,
-  maximum: number,
+  maximum: number
 ): TimeRange {
   return clampTimeRange(
     start + delta,
     end + delta,
     minimum,
     maximum,
-    Math.min(1, Math.max(Number.EPSILON, end - start)),
+    Math.min(1, Math.max(Number.EPSILON, end - start))
   );
 }
 
@@ -82,7 +88,7 @@ export function aggregateTimeHistogram(
   domainMaximum: number,
   viewMinimum: number,
   viewMaximum: number,
-  outputBinCount: number,
+  outputBinCount: number
 ): Uint32Array {
   const output = new Uint32Array(Math.max(1, outputBinCount));
   if (
@@ -97,30 +103,29 @@ export function aggregateTimeHistogram(
   const domainSpan = domainMaximum - domainMinimum;
   const sourceStart = Math.max(
     0,
-    Math.floor(
-      ((viewMinimum - domainMinimum) / domainSpan) * source.length,
-    ),
+    Math.floor(((viewMinimum - domainMinimum) / domainSpan) * source.length)
   );
   const sourceEnd = Math.min(
     source.length,
-    Math.ceil(
-      ((viewMaximum - domainMinimum) / domainSpan) * source.length,
-    ),
+    Math.ceil(((viewMaximum - domainMinimum) / domainSpan) * source.length)
   );
   const viewSpan = viewMaximum - viewMinimum;
-  for (let sourceIndex = sourceStart; sourceIndex < sourceEnd; sourceIndex += 1) {
+  for (
+    let sourceIndex = sourceStart;
+    sourceIndex < sourceEnd;
+    sourceIndex += 1
+  ) {
     const count = source[sourceIndex];
     if (!count) continue;
     const center =
-      domainMinimum +
-      ((sourceIndex + 0.5) / source.length) * domainSpan;
+      domainMinimum + ((sourceIndex + 0.5) / source.length) * domainSpan;
     if (center < viewMinimum || center > viewMaximum) continue;
     const outputIndex = Math.min(
       output.length - 1,
       Math.max(
         0,
-        Math.floor(((center - viewMinimum) / viewSpan) * output.length),
-      ),
+        Math.floor(((center - viewMinimum) / viewSpan) * output.length)
+      )
     );
     output[outputIndex] += count;
   }
@@ -128,16 +133,16 @@ export function aggregateTimeHistogram(
 }
 
 export function formatFullTimestamp(value: number): string {
-  if (!Number.isFinite(value)) return "—";
+  if (!Number.isFinite(value)) return '—';
   return new Date(value * 1000)
     .toISOString()
-    .replace("T", " ")
-    .replace(".000Z", " UTC")
-    .replace("Z", " UTC");
+    .replace('T', ' ')
+    .replace('.000Z', ' UTC')
+    .replace('Z', ' UTC');
 }
 
 export function formatTimeAxisTick(value: number, spanSeconds: number): string {
-  if (!Number.isFinite(value)) return "—";
+  if (!Number.isFinite(value)) return '—';
   const date = new Date(value * 1000);
   const iso = date.toISOString();
   if (spanSeconds <= 120) return iso.slice(11, 23);

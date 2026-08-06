@@ -1,16 +1,14 @@
+import {useEffect, useMemo, useRef, useState} from 'react';
 import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {VirtualDataTable, type VirtualDataTableColumn} from "../../widgets/VirtualDataTable";
-import {containsCoordinate} from "ol/extent.js";
-import {fromLonLat} from "ol/proj.js";
-import type {DatasetSummary, PackedDataset} from "../../lib/types";
-import {buildCompactSpatialIndex} from "../../map/compactIndex";
-import {FastPointEngine} from "../../map/FastPointEngine";
-import {createSeededRandom} from "../data/sampleData";
+  VirtualDataTable,
+  type VirtualDataTableColumn,
+} from '../../widgets/VirtualDataTable';
+import {containsCoordinate} from 'ol/extent.js';
+import {fromLonLat} from 'ol/proj.js';
+import type {DatasetSummary, PackedDataset} from '../../lib/types';
+import {buildCompactSpatialIndex} from '../../map/compactIndex';
+import {FastPointEngine} from '../../map/FastPointEngine';
+import {createSeededRandom} from '../data/sampleData';
 
 type FilterRow = {
   id: number;
@@ -32,28 +30,21 @@ const END_TIME = START_TIME + 30 * 24 * 3600;
 function packedColor(value: number): number {
   const ratio = value / 100;
   const red = ratio < 0.5 ? Math.trunc(255 * ratio * 2) : 255;
-  const green =
-    ratio < 0.5 ? 255 : Math.trunc(255 * (1 - (ratio - 0.5) * 2));
+  const green = ratio < 0.5 ? 255 : Math.trunc(255 * (1 - (ratio - 0.5) * 2));
   return ((red << 24) | (green << 16) | (0 << 8) | 200) >>> 0;
 }
 
 function buildRows(): FilterRow[] {
   const random = createSeededRandom(42);
-  const latitudes = Array.from(
-    {length: POINT_COUNT},
-    () => 32 + random() * 15,
-  );
+  const latitudes = Array.from({length: POINT_COUNT}, () => 32 + random() * 15);
   const longitudes = Array.from(
     {length: POINT_COUNT},
-    () => -125 + random() * 15,
+    () => -125 + random() * 15
   );
-  const values = Array.from(
-    {length: POINT_COUNT},
-    () => random() * 100,
-  );
+  const values = Array.from({length: POINT_COUNT}, () => random() * 100);
   const times = Array.from(
     {length: POINT_COUNT},
-    () => START_TIME + random() * (END_TIME - START_TIME),
+    () => START_TIME + random() * (END_TIME - START_TIME)
   );
   return Array.from({length: POINT_COUNT}, (_, id) => ({
     id,
@@ -103,7 +94,7 @@ function buildDataset(rows: readonly FilterRow[]): {
       index: buildCompactSpatialIndex(x, y),
     },
     summary: {
-      name: "Range slider sample",
+      name: 'Range slider sample',
       rowCount: rows.length,
       timeMin: START_TIME,
       timeMax: END_TIME,
@@ -127,13 +118,31 @@ type FilterTableProps = {
 };
 
 const filterTableColumns: readonly VirtualDataTableColumn<FilterRow>[] = [
-  {key: "id", heading: "ID", sortValue: (row) => row.id, render: (row) => `point_${row.id}`},
-  {key: "value", heading: "Value", sortValue: (row) => row.value, render: (row) => row.value.toFixed(1)},
-  {key: "time", heading: "Timestamp", sortValue: (row) => row.time, render: (row) => formatTimestamp(row.time)},
+  {
+    key: 'id',
+    heading: 'ID',
+    sortValue: (row) => row.id,
+    render: (row) => `point_${row.id}`,
+  },
+  {
+    key: 'value',
+    heading: 'Value',
+    sortValue: (row) => row.value,
+    render: (row) => row.value.toFixed(1),
+  },
+  {
+    key: 'time',
+    heading: 'Timestamp',
+    sortValue: (row) => row.time,
+    render: (row) => formatTimestamp(row.time),
+  },
 ];
 
 function FilterTable({rows, indices, selected, onSelect}: FilterTableProps) {
-  const displayRows = useMemo(() => Array.from(indices, (index) => rows[index]), [indices, rows]);
+  const displayRows = useMemo(
+    () => Array.from(indices, (index) => rows[index]),
+    [indices, rows]
+  );
   return (
     <VirtualDataTable
       rows={displayRows}
@@ -160,11 +169,11 @@ export function FilteringDemoApp() {
   const rows = useMemo(buildRows, []);
   const timeMinimum = useMemo(
     () => Math.min(...rows.map((row) => row.time)),
-    [rows],
+    [rows]
   );
   const timeMaximum = useMemo(
     () => Math.max(...rows.map((row) => row.time)),
-    [rows],
+    [rows]
   );
   const [valueRange, setValueRange] = useState<[number, number]>([0, 100]);
   const [timeRange, setTimeRange] = useState<[number, number]>([
@@ -237,10 +246,7 @@ export function FilteringDemoApp() {
     engineRef.current?.setVisibilityMask(filtered.mask);
   }, [filtered.mask]);
 
-  const selectTableRows = (
-    ids: readonly number[],
-    additive: boolean,
-  ): void => {
+  const selectTableRows = (ids: readonly number[], additive: boolean): void => {
     const engine = engineRef.current;
     if (!engine || ids.length === 0) return;
     if (additive && ids.length === 1) engine.toggleIndex(ids[0]);
@@ -362,8 +368,7 @@ export function FilteringDemoApp() {
           className="filter-split-content"
           ref={splitRef}
           style={{
-            gridTemplateColumns:
-              `minmax(260px, ${tablePercent}%) 6px minmax(0, 1fr)`,
+            gridTemplateColumns: `minmax(260px, ${tablePercent}%) 6px minmax(0, 1fr)`,
           }}
         >
           <FilterTable
@@ -380,7 +385,7 @@ export function FilteringDemoApp() {
             tabIndex={0}
             onPointerDown={(event) => {
               event.currentTarget.setPointerCapture(event.pointerId);
-              event.currentTarget.classList.add("is-dragging");
+              event.currentTarget.classList.add('is-dragging');
             }}
             onPointerMove={(event) => {
               if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -396,16 +401,16 @@ export function FilteringDemoApp() {
               if (event.currentTarget.hasPointerCapture(event.pointerId)) {
                 event.currentTarget.releasePointerCapture(event.pointerId);
               }
-              event.currentTarget.classList.remove("is-dragging");
+              event.currentTarget.classList.remove('is-dragging');
             }}
             onPointerCancel={(event) => {
-              event.currentTarget.classList.remove("is-dragging");
+              event.currentTarget.classList.remove('is-dragging');
             }}
             onKeyDown={(event) => {
-              if (event.key === "ArrowLeft") {
+              if (event.key === 'ArrowLeft') {
                 event.preventDefault();
                 setTablePercent((current) => Math.max(20, current - 2));
-              } else if (event.key === "ArrowRight") {
+              } else if (event.key === 'ArrowRight') {
                 event.preventDefault();
                 setTablePercent((current) => Math.min(70, current + 2));
               }

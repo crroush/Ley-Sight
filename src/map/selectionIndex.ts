@@ -1,5 +1,5 @@
-import type { CompactSpatialIndex } from "../lib/types";
-import type { Extent } from "./quadtree";
+import type {CompactSpatialIndex} from '../lib/types';
+import type {Extent} from './quadtree';
 
 function isLeaf(spatial: CompactSpatialIndex, node: number): boolean {
   const base = node * 4;
@@ -14,7 +14,7 @@ function isLeaf(spatial: CompactSpatialIndex, node: number): boolean {
 function nodeIntersects(
   spatial: CompactSpatialIndex,
   node: number,
-  extent: Extent,
+  extent: Extent
 ): boolean {
   return !(
     spatial.nodeMaxX[node] < extent[0] ||
@@ -27,7 +27,7 @@ function nodeIntersects(
 function nodeInsideExtent(
   spatial: CompactSpatialIndex,
   node: number,
-  extent: Extent,
+  extent: Extent
 ): boolean {
   return (
     spatial.nodeMinX[node] >= extent[0] &&
@@ -41,7 +41,7 @@ function pointInExtent(
   x: Float64Array,
   y: Float64Array,
   index: number,
-  extent: Extent,
+  extent: Extent
 ): boolean {
   return (
     x[index] >= extent[0] &&
@@ -56,7 +56,7 @@ export function rebuildNodeSelectionCounts(
   selected: Uint8Array,
   visible: Uint8Array,
   deleted: Uint8Array,
-  nodeSelected: Uint32Array,
+  nodeSelected: Uint32Array
 ): number {
   for (let node = nodeSelected.length - 1; node >= 0; node -= 1) {
     if (!isLeaf(spatial, node)) {
@@ -98,7 +98,7 @@ export function selectExtentIntoMask(
   nodeVisible: Uint32Array,
   nodeSelected: Uint32Array,
   extent: Extent,
-  replace = true,
+  replace = true
 ): number {
   if (replace) {
     selected.fill(0);

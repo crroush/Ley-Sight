@@ -1,19 +1,19 @@
-import {useEffect, useMemo, useRef, useState} from "react";
-import {fromLonLat} from "ol/proj.js";
-import {FastPointEngine} from "../map/FastPointEngine";
+import {useEffect, useMemo, useRef, useState} from 'react';
+import {fromLonLat} from 'ol/proj.js';
+import {FastPointEngine} from '../map/FastPointEngine';
 import {
   createReferenceDataset,
   createReferenceRandom,
   packRgba,
   type ReferencePointRecord,
-} from "./referenceData";
+} from './referenceData';
 
 function useFastEngine(
   records: readonly ReferencePointRecord[],
   title: string,
   center: [number, number],
   zoom: number,
-  configure: (engine: FastPointEngine) => void,
+  configure: (engine: FastPointEngine) => void
 ) {
   const mapTargetRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<FastPointEngine | null>(null);
@@ -57,7 +57,7 @@ function fastPerformanceRecords(): ReferencePointRecord[] {
         Math.trunc(255 * (1 - ratio)),
         100,
         Math.trunc(255 * ratio),
-        200,
+        200
       ),
     });
   }
@@ -81,10 +81,10 @@ export function FastPointsPerformanceExampleApp() {
   const records = useMemo(fastPerformanceRecords, []);
   const {mapTargetRef} = useFastEngine(
     records,
-    "Fast Points - High-Performance Rendering",
+    'Fast Points - High-Performance Rendering',
     [-120, 37],
     6,
-    configurePerformance,
+    configurePerformance
   );
   return (
     <main className="reference-example-window">
@@ -97,11 +97,11 @@ function uncertaintyRecords(): ReferencePointRecord[] {
   const random = createReferenceRandom(42);
   const latitudes = Array.from(
     {length: 50},
-    () => 37.7749 + (random() - 0.5) * 0.1,
+    () => 37.7749 + (random() - 0.5) * 0.1
   );
   const longitudes = Array.from(
     {length: 50},
-    () => -122.4194 + (random() - 0.5) * 0.1,
+    () => -122.4194 + (random() - 0.5) * 0.1
   );
   const records = latitudes.map((latitude, index) => ({
     latitude,
@@ -142,10 +142,10 @@ export function GeoUncertaintyExampleApp() {
   const [ellipsesVisible, setEllipsesVisible] = useState(true);
   const {mapTargetRef, engineRef} = useFastEngine(
     records,
-    "Geolocation with Uncertainty Ellipses",
+    'Geolocation with Uncertainty Ellipses',
     [-122.4194, 37.7749],
     11,
-    configureUncertainty,
+    configureUncertainty
   );
 
   return (
@@ -156,7 +156,7 @@ export function GeoUncertaintyExampleApp() {
           ellipses.
         </p>
         <button
-          className={!ellipsesVisible ? "is-danger" : ""}
+          className={!ellipsesVisible ? 'is-danger' : ''}
           type="button"
           onClick={() => {
             const visible = !ellipsesVisible;
@@ -164,7 +164,7 @@ export function GeoUncertaintyExampleApp() {
             engineRef.current?.setEllipsesVisible(visible);
           }}
         >
-          {ellipsesVisible ? "Hide Ellipses" : "Show Ellipses"}
+          {ellipsesVisible ? 'Hide Ellipses' : 'Show Ellipses'}
         </button>
       </section>
       <div className="reference-map-fill" ref={mapTargetRef} />

@@ -1,1 +1,1 @@
-export {TableIntegrationExampleApp} from "../examples/recipes/TableIntegrationRecipeApp";
+export {TableIntegrationExampleApp} from '../examples/recipes/TableIntegrationRecipeApp';

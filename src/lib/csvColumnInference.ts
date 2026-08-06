@@ -2,13 +2,11 @@ import {
   DEFAULT_APP_CONFIG,
   type CsvDetectionRule,
   type CsvDetectionRules,
-} from "../config/appConfig";
-import type {CsvColumnMapping} from "./types";
+} from '../config/appConfig';
+import type {CsvColumnMapping} from './types';
 
 function searchableColumnName(column: string): string {
-  return column
-    .trim()
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+  return column.trim().replace(/([a-z0-9])([A-Z])/g, '$1 $2');
 }
 
 /**
@@ -18,7 +16,7 @@ function searchableColumnName(column: string): string {
  */
 export function inferCsvColumn(
   columns: readonly string[],
-  rules: readonly CsvDetectionRule[],
+  rules: readonly CsvDetectionRule[]
 ): string | undefined {
   let bestColumn: string | undefined;
   let bestScore = -Infinity;
@@ -27,7 +25,7 @@ export function inferCsvColumn(
     for (const rule of rules) {
       let matches = false;
       try {
-        matches = new RegExp(rule.pattern, rule.flags ?? "").test(searchable);
+        matches = new RegExp(rule.pattern, rule.flags ?? '').test(searchable);
       } catch {
         // Invalid external rules are ignored here; loadAppConfig reports them.
         continue;
@@ -43,21 +41,20 @@ export function inferCsvColumn(
 
 export function inferCsvColumnMapping(
   columns: readonly string[],
-  configuredRules: CsvDetectionRules =
-    DEFAULT_APP_CONFIG.csvColumnDetection,
+  configuredRules: CsvDetectionRules = DEFAULT_APP_CONFIG.csvColumnDetection
 ): CsvColumnMapping {
   const detect = (role: keyof CsvColumnMapping): string | undefined =>
     inferCsvColumn(columns, configuredRules[role] ?? []);
-  const latitude = detect("latitude") ?? columns[0] ?? "";
+  const latitude = detect('latitude') ?? columns[0] ?? '';
   const longitude =
-    detect("longitude") ??
+    detect('longitude') ??
     columns.find((column) => column !== latitude) ??
     columns[0] ??
-    "";
-  const time = detect("time");
-  const semiMajor = detect("semiMajor");
-  const semiMinor = detect("semiMinor");
-  const tilt = detect("tilt");
+    '';
+  const time = detect('time');
+  const semiMajor = detect('semiMajor');
+  const semiMinor = detect('semiMinor');
+  const tilt = detect('tilt');
   const reserved = new Set([
     latitude,
     longitude,
@@ -71,12 +68,10 @@ export function inferCsvColumnMapping(
     latitude,
     longitude,
     time,
-    timestampInterpretation: "automatic",
+    timestampInterpretation: 'automatic',
     semiMajor,
     semiMinor,
     tilt,
-    color:
-      detect("color") ??
-      columns.find((column) => !reserved.has(column)),
+    color: detect('color') ?? columns.find((column) => !reserved.has(column)),
   };
 }

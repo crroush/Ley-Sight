@@ -1,21 +1,16 @@
-import {useEffect, useRef, useState} from "react";
-import Feature from "ol/Feature.js";
-import Point from "ol/geom/Point.js";
-import VectorLayer from "ol/layer/Vector.js";
-import TileLayer from "ol/layer/Tile.js";
-import Map from "ol/Map.js";
-import View from "ol/View.js";
-import {fromLonLat, toLonLat} from "ol/proj.js";
-import OSM from "ol/source/OSM.js";
-import VectorSource from "ol/source/Vector.js";
-import {
-  Circle as CircleStyle,
-  Fill,
-  Stroke,
-  Style,
-} from "ol/style.js";
-import {Crosshair, MapPin, MousePointerClick, Trash2} from "lucide-react";
-import {DemoHeader} from "./DemoHeader";
+import {useEffect, useRef, useState} from 'react';
+import Feature from 'ol/Feature.js';
+import Point from 'ol/geom/Point.js';
+import VectorLayer from 'ol/layer/Vector.js';
+import TileLayer from 'ol/layer/Tile.js';
+import Map from 'ol/Map.js';
+import View from 'ol/View.js';
+import {fromLonLat, toLonLat} from 'ol/proj.js';
+import OSM from 'ol/source/OSM.js';
+import VectorSource from 'ol/source/Vector.js';
+import {Circle as CircleStyle, Fill, Stroke, Style} from 'ol/style.js';
+import {Crosshair, MapPin, MousePointerClick, Trash2} from 'lucide-react';
+import {DemoHeader} from './DemoHeader';
 
 type ContextMenuState = {
   left: number;
@@ -25,13 +20,13 @@ type ContextMenuState = {
 };
 
 function markerStyle(feature: Feature): Style {
-  const priority = feature.get("priority") === true;
+  const priority = feature.get('priority') === true;
   return new Style({
     image: new CircleStyle({
       radius: priority ? 9 : 7,
-      fill: new Fill({color: priority ? "#f97316" : "#fde047"}),
+      fill: new Fill({color: priority ? '#f97316' : '#fde047'}),
       stroke: new Stroke({
-        color: priority ? "#7c2d12" : "#713f12",
+        color: priority ? '#7c2d12' : '#713f12',
         width: 2,
       }),
     }),
@@ -50,7 +45,7 @@ export function MapEventsDemoApp() {
   const heldKeysRef = useRef(new Set<string>());
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [status, setStatus] = useState(
-    "Right-click anywhere, or hold T while clicking the map.",
+    'Right-click anywhere, or hold T while clicking the map.'
   );
   const [pointCount, setPointCount] = useState(0);
 
@@ -65,10 +60,7 @@ export function MapEventsDemoApp() {
     vectorLayer.setZIndex(3);
     const map = new Map({
       target: mapRef.current,
-      layers: [
-        new TileLayer({source: new OSM()}),
-        vectorLayer,
-      ],
+      layers: [new TileLayer({source: new OSM()}), vectorLayer],
       view: new View({
         center: fromLonLat([-101, 39]),
         zoom: 4,
@@ -78,25 +70,25 @@ export function MapEventsDemoApp() {
 
     const addTarget = (
       coordinate: [number, number],
-      priority: boolean,
+      priority: boolean
     ): void => {
       const feature = new Feature(new Point(coordinate));
       const nextNumber = source.getFeatures().length + 1;
       feature.setProperties({
-        name: `${priority ? "Priority" : "Standard"} target ${nextNumber}`,
+        name: `${priority ? 'Priority' : 'Standard'} target ${nextNumber}`,
         priority,
       });
       source.addFeature(feature);
       setPointCount(source.getFeatures().length);
       setStatus(
-        `${feature.get("name")} added at ${formatCoordinate(coordinate)}.`,
+        `${feature.get('name')} added at ${formatCoordinate(coordinate)}.`
       );
     };
 
-    map.on("singleclick", (event) => {
+    map.on('singleclick', (event) => {
       setContextMenu(null);
       const coordinate = event.coordinate as [number, number];
-      if (heldKeysRef.current.has("t")) {
+      if (heldKeysRef.current.has('t')) {
         const mouseEvent = event.originalEvent as MouseEvent;
         addTarget(coordinate, mouseEvent.shiftKey);
         return;
@@ -111,14 +103,14 @@ export function MapEventsDemoApp() {
       const coordinate = map.getCoordinateFromPixel(pixel) as [number, number];
       const feature = map.forEachFeatureAtPixel(
         pixel,
-        (candidate) => candidate,
+        (candidate) => candidate
       );
       const rect = mapRef.current?.getBoundingClientRect();
       setContextMenu({
         left: event.clientX - (rect?.left ?? 0),
         top: event.clientY - (rect?.top ?? 0),
         coordinate,
-        featureName: feature ? String(feature.get("name")) : null,
+        featureName: feature ? String(feature.get('name')) : null,
       });
     };
     const closeContextMenu = (): void => setContextMenu(null);
@@ -131,18 +123,18 @@ export function MapEventsDemoApp() {
       heldKeysRef.current.delete(event.key.toLowerCase());
     };
     const clearHeldKeys = (): void => heldKeysRef.current.clear();
-    viewport.addEventListener("contextmenu", openContextMenu);
-    window.addEventListener("keydown", keyDown);
-    window.addEventListener("keyup", keyUp);
-    window.addEventListener("blur", clearHeldKeys);
-    map.on("movestart", closeContextMenu);
+    viewport.addEventListener('contextmenu', openContextMenu);
+    window.addEventListener('keydown', keyDown);
+    window.addEventListener('keyup', keyUp);
+    window.addEventListener('blur', clearHeldKeys);
+    map.on('movestart', closeContextMenu);
 
     return () => {
-      viewport.removeEventListener("contextmenu", openContextMenu);
-      window.removeEventListener("keydown", keyDown);
-      window.removeEventListener("keyup", keyUp);
-      window.removeEventListener("blur", clearHeldKeys);
-      map.un("movestart", closeContextMenu);
+      viewport.removeEventListener('contextmenu', openContextMenu);
+      window.removeEventListener('keydown', keyDown);
+      window.removeEventListener('keyup', keyUp);
+      window.removeEventListener('blur', clearHeldKeys);
+      map.un('movestart', closeContextMenu);
       map.setTarget(undefined);
       mapInstanceRef.current = null;
     };
@@ -159,7 +151,7 @@ export function MapEventsDemoApp() {
     source.addFeature(feature);
     setPointCount(source.getFeatures().length);
     setStatus(
-      `${feature.get("name")} added at ${formatCoordinate(contextMenu.coordinate)}.`,
+      `${feature.get('name')} added at ${formatCoordinate(contextMenu.coordinate)}.`
     );
     setContextMenu(null);
   };
@@ -169,7 +161,7 @@ export function MapEventsDemoApp() {
     setStatus(
       contextMenu.featureName
         ? `Feature: ${contextMenu.featureName} · ${formatCoordinate(contextMenu.coordinate)}.`
-        : `No feature at ${formatCoordinate(contextMenu.coordinate)}.`,
+        : `No feature at ${formatCoordinate(contextMenu.coordinate)}.`
     );
     setContextMenu(null);
   };
@@ -205,7 +197,7 @@ export function MapEventsDemoApp() {
           onClick={() => {
             sourceRef.current.clear();
             setPointCount(0);
-            setStatus("All target points cleared.");
+            setStatus('All target points cleared.');
           }}
         >
           <Trash2 size={15} /> Clear points
@@ -225,7 +217,7 @@ export function MapEventsDemoApp() {
               role="menu"
             >
               <div>
-                {contextMenu.featureName ?? "Map coordinate"}
+                {contextMenu.featureName ?? 'Map coordinate'}
                 <small>{formatCoordinate(contextMenu.coordinate)}</small>
               </div>
               <button role="menuitem" onClick={addContextPoint}>
@@ -255,8 +247,8 @@ export function MapEventsDemoApp() {
               <li>Right-click: coordinate and feature action menu.</li>
             </ul>
             <p>
-              Desktop shells can own Ctrl+T. Normal browsers reserve
-              it for New Tab, so this web example uses Shift+T.
+              Desktop shells can own Ctrl+T. Normal browsers reserve it for New
+              Tab, so this web example uses Shift+T.
             </p>
           </section>
         </aside>

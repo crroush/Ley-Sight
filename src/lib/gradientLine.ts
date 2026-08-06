@@ -6,13 +6,13 @@ export type LatitudeLongitude = readonly [number, number];
  */
 export function expandGradientCoordinates(
   coordinates: readonly LatitudeLongitude[],
-  interpolateSteps: number,
+  interpolateSteps: number
 ): LatitudeLongitude[] {
   if (coordinates.length < 2) {
-    throw new Error("coordinates must contain at least two points");
+    throw new Error('coordinates must contain at least two points');
   }
   if (!Number.isInteger(interpolateSteps) || interpolateSteps < 1) {
-    throw new Error("interpolateSteps must be a positive integer");
+    throw new Error('interpolateSteps must be a positive integer');
   }
   if (interpolateSteps === 1) return [...coordinates];
 
@@ -38,7 +38,7 @@ export function expandGradientCoordinates(
 export function renderedGradientValues(
   values: readonly number[],
   coordinateCount: number,
-  interpolateSteps: number,
+  interpolateSteps: number
 ): number[] {
   const segmentCount = coordinateCount - 1;
   let vertexValues: number[];
@@ -53,7 +53,7 @@ export function renderedGradientValues(
     }
   } else {
     throw new Error(
-      "values length must equal coordinateCount or coordinateCount - 1",
+      'values length must equal coordinateCount or coordinateCount - 1'
     );
   }
 
@@ -72,7 +72,7 @@ export function renderedGradientValues(
 /** Repeats one explicit input color for every rendered subsegment. */
 export function expandSegmentColors(
   colors: readonly string[],
-  interpolateSteps: number,
+  interpolateSteps: number
 ): string[] {
   return colors.flatMap((color) =>
     Array.from({length: interpolateSteps}, () => color)

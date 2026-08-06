@@ -1,27 +1,22 @@
-import {useEffect, useRef, useState} from "react";
-import Feature from "ol/Feature.js";
-import Point from "ol/geom/Point.js";
-import VectorLayer from "ol/layer/Vector.js";
-import TileLayer from "ol/layer/Tile.js";
-import Map from "ol/Map.js";
-import View from "ol/View.js";
-import {fromLonLat} from "ol/proj.js";
-import OSM from "ol/source/OSM.js";
-import TileWMS from "ol/source/TileWMS.js";
-import VectorSource from "ol/source/Vector.js";
-import XYZ from "ol/source/XYZ.js";
-import {
-  Circle as CircleStyle,
-  Fill,
-  Stroke,
-  Style,
-} from "ol/style.js";
-import {installReferenceCoordinateDisplay} from "../map/referenceCoordinateDisplay";
+import {useEffect, useRef, useState} from 'react';
+import Feature from 'ol/Feature.js';
+import Point from 'ol/geom/Point.js';
+import VectorLayer from 'ol/layer/Vector.js';
+import TileLayer from 'ol/layer/Tile.js';
+import Map from 'ol/Map.js';
+import View from 'ol/View.js';
+import {fromLonLat} from 'ol/proj.js';
+import OSM from 'ol/source/OSM.js';
+import TileWMS from 'ol/source/TileWMS.js';
+import VectorSource from 'ol/source/Vector.js';
+import XYZ from 'ol/source/XYZ.js';
+import {Circle as CircleStyle, Fill, Stroke, Style} from 'ol/style.js';
+import {installReferenceCoordinateDisplay} from '../map/referenceCoordinateDisplay';
 
-const DEFAULT_OSM_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const ALT_OSM_URL = "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png";
+const DEFAULT_OSM_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const ALT_OSM_URL = 'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png';
 const AWS_TERRAIN_URL =
-  "https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png";
+  'https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png';
 
 /** Browser port of examples/04_wms_and_base_layers.py. */
 export function LayerManagerExampleApp() {
@@ -30,7 +25,7 @@ export function LayerManagerExampleApp() {
   const tileLayerRef = useRef<TileLayer<XYZ> | null>(null);
   const wmsLayerRef = useRef<TileLayer<TileWMS> | null>(null);
   const [tileUrl, setTileUrl] = useState(DEFAULT_OSM_URL);
-  const [wmsDataset, setWmsDataset] = useState("topp:states");
+  const [wmsDataset, setWmsDataset] = useState('topp:states');
   const [baseVisible, setBaseVisible] = useState(true);
   const [tileVisible, setTileVisible] = useState(true);
   const [wmsVisible, setWmsVisible] = useState(true);
@@ -40,25 +35,25 @@ export function LayerManagerExampleApp() {
 
   useEffect(() => {
     if (!mapTargetRef.current) return;
-    document.title = "Layer Manager: OSM + Generic Tile + WMS";
+    document.title = 'Layer Manager: OSM + Generic Tile + WMS';
     const baseLayer = new TileLayer({
       source: new OSM({url: DEFAULT_OSM_URL, transition: 0}),
     });
     const tileLayer = new TileLayer({
       source: new XYZ({
         url: DEFAULT_OSM_URL,
-        attributions: "Managed generic tile layer",
+        attributions: 'Managed generic tile layer',
         transition: 0,
       }),
       opacity: 0.6,
     });
     const wmsLayer = new TileLayer({
       source: new TileWMS({
-        url: "https://ahocevar.com/geoserver/wms",
+        url: 'https://ahocevar.com/geoserver/wms',
         params: {
-          LAYERS: "topp:states",
-          FORMAT: "image/png",
-          TRANSPARENT: "TRUE",
+          LAYERS: 'topp:states',
+          FORMAT: 'image/png',
+          TRANSPARENT: 'TRUE',
           TILED: true,
         },
         transition: 0,
@@ -69,12 +64,12 @@ export function LayerManagerExampleApp() {
     tileLayerRef.current = tileLayer;
     wmsLayerRef.current = wmsLayer;
     const capitalFeatures = [
-      [38.9072, -77.0369, "Washington DC"],
-      [33.4484, -112.074, "Phoenix"],
-      [39.7392, -104.9903, "Denver"],
+      [38.9072, -77.0369, 'Washington DC'],
+      [33.4484, -112.074, 'Phoenix'],
+      [39.7392, -104.9903, 'Denver'],
     ].map(([latitude, longitude, name]) => {
       const feature = new Feature(
-        new Point(fromLonLat([Number(longitude), Number(latitude)])),
+        new Point(fromLonLat([Number(longitude), Number(latitude)]))
       );
       feature.setId(String(name));
       return feature;
@@ -84,8 +79,8 @@ export function LayerManagerExampleApp() {
       style: new Style({
         image: new CircleStyle({
           radius: 8,
-          fill: new Fill({color: "red"}),
-          stroke: new Stroke({color: "darkred", width: 2}),
+          fill: new Fill({color: 'red'}),
+          stroke: new Stroke({color: 'darkred', width: 2}),
         }),
       }),
     });
@@ -96,7 +91,7 @@ export function LayerManagerExampleApp() {
     });
     const coordinates = installReferenceCoordinateDisplay(
       map,
-      mapTargetRef.current,
+      mapTargetRef.current
     );
     return () => {
       coordinates.dispose();
@@ -128,11 +123,13 @@ export function LayerManagerExampleApp() {
           <button
             type="button"
             onClick={() =>
-              tileLayerRef.current?.setSource(new XYZ({
-                url: tileUrl.trim() || DEFAULT_OSM_URL,
-                attributions: "Managed generic tile layer",
-                transition: 0,
-              }))
+              tileLayerRef.current?.setSource(
+                new XYZ({
+                  url: tileUrl.trim() || DEFAULT_OSM_URL,
+                  attributions: 'Managed generic tile layer',
+                  transition: 0,
+                })
+              )
             }
           >
             Apply to Generic Tile Layer
@@ -149,8 +146,8 @@ export function LayerManagerExampleApp() {
                 setWmsDataset(dataset);
                 wmsLayerRef.current?.getSource()?.updateParams({
                   LAYERS: dataset,
-                  FORMAT: "image/png",
-                  TRANSPARENT: "TRUE",
+                  FORMAT: 'image/png',
+                  TRANSPARENT: 'TRUE',
                 });
               }}
             >
@@ -163,8 +160,10 @@ export function LayerManagerExampleApp() {
         </fieldset>
         <fieldset className="reference-layer-grid">
           <legend>Layers</legend>
-          <strong>Layer</strong><strong>Visible</strong>
-          <strong>Opacity</strong><strong>Value</strong>
+          <strong>Layer</strong>
+          <strong>Visible</strong>
+          <strong>Opacity</strong>
+          <strong>Value</strong>
           <span>Base OSM</span>
           <input
             aria-label="Base OSM visible"
