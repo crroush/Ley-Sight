@@ -178,3 +178,4 @@ export function selectExtentIntoMask(
 
   return visitNode(0);
 }
+/** @internal Selection-index bookkeeping used by FastPointEngine. */

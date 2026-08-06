@@ -9,14 +9,14 @@ import {
 import {
   VirtualDataTable,
   type VirtualDataTableColumn,
-} from '../../widgets/VirtualDataTable';
+} from '../../toolkit/widgets';
 import Feature from 'ol/Feature.js';
 import Point from 'ol/geom/Point.js';
 import VectorLayer from 'ol/layer/Vector.js';
 import {fromLonLat} from 'ol/proj.js';
 import VectorSource from 'ol/source/Vector.js';
 import {Circle as CircleStyle, Fill, Stroke, Style} from 'ol/style.js';
-import {FastPointEngine} from '../../map/FastPointEngine';
+import {FastPointEngine} from '../../toolkit/map';
 import {
   createSampleDataset,
   createSeededRandomGenerator,
