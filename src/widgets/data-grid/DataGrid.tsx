@@ -91,6 +91,7 @@ export function DataGrid<RowId>({
   const scrollRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const anchorRef = useRef<number | null>(null);
+  const pendingFocusPositionRef = useRef(-1);
   const sortRevisionRef = useRef(0);
   const [sort, setSort] = useState<DataGridSortRequest | null>(null);
   const [sortedRows, setSortedRows] = useState<ArrayLike<RowId> | null>(null);
@@ -143,15 +144,30 @@ export function DataGrid<RowId>({
     const focusPage = Number.isFinite(pageSize)
       ? Math.floor(position / pageSize)
       : 0;
-    if (focusPage !== page) onPageChange?.(focusPage);
-    else virtualizer.scrollToIndex(position - pageStart, {align: 'auto'});
+    if (focusPage !== page) {
+      pendingFocusPositionRef.current = position;
+      onPageChange?.(focusPage);
+    } else {
+      pendingFocusPositionRef.current = -1;
+      virtualizer.scrollToIndex(position - pageStart, {align: 'auto'});
+    }
   }, [
     rowSource.revision,
-    page,
     selection.focusRowId,
     selection.revision,
     sortedRows,
   ]);
+
+  useEffect(() => {
+    const position = pendingFocusPositionRef.current;
+    if (position < 0) return;
+    const focusPage = Number.isFinite(pageSize)
+      ? Math.floor(position / pageSize)
+      : 0;
+    if (focusPage !== page) return;
+    pendingFocusPositionRef.current = -1;
+    virtualizer.scrollToIndex(position - pageStart, {align: 'auto'});
+  }, [page, pageStart, pageSize, sortedRows, virtualizer]);
 
   const applySort = async (
     column: DataGridColumn<RowId>,

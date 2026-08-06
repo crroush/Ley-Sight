@@ -51,10 +51,21 @@ export function VirtualDataTable<Row, Key extends string | number>({
     })
   );
   const initialColumn = initialSort ? columns[initialSort.column] : undefined;
+  const firstSelected = selected.values().next().value as Key | undefined;
+  const focusedPosition =
+    firstSelected == null
+      ? -1
+      : rows.findIndex(
+          (row, index) => selectionKey(row, index) === firstSelected
+        );
   const props: DataGridProps<number> = {
     ...presentation,
     columns: gridColumns,
-    rowSource: {rowCount: rows.length, rowIdAt: (index) => index},
+    rowSource: {
+      rowCount: rows.length,
+      rowIdAt: (index) => index,
+      revision: rows,
+    },
     selection: {
       isSelected: (index) => selected.has(selectionKey(rows[index], index)),
       onSelection: (indices, additive) =>
@@ -62,6 +73,7 @@ export function VirtualDataTable<Row, Key extends string | number>({
           indices.map((index) => selectionKey(rows[index], index)),
           additive
         ),
+      focusRowId: focusedPosition >= 0 ? focusedPosition : undefined,
     },
     onRowContextMenu: onRowContextMenu
       ? (x, y, index) => onRowContextMenu(x, y, rows[index], index)
