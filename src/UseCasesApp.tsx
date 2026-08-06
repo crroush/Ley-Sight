@@ -14,7 +14,6 @@ import {
   REFERENCE_USE_CASES,
   type ParityStatus,
 } from './demos/referenceUseCases';
-import './styles.css';
 
 const STATUS_LABELS: Record<ParityStatus, string> = {
   available: 'Parity verified',
