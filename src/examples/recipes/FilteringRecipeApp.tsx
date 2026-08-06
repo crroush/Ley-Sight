@@ -1,8 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
-import {
-  VirtualDataTable,
-  type VirtualDataTableColumn,
-} from '../../toolkit/widgets';
+import {DataGrid, type DataGridColumn} from '../../toolkit/widgets';
 import {containsCoordinate} from 'ol/extent.js';
 import {fromLonLat} from 'ol/proj.js';
 import type {DatasetSummary, PackedDataset} from '../../toolkit/data';
@@ -116,47 +113,44 @@ type FilterTableProps = {
   onSelect: (ids: readonly number[], additive: boolean) => void;
 };
 
-const filterTableColumns: readonly VirtualDataTableColumn<FilterRow>[] = [
-  {
-    key: 'id',
-    heading: 'ID',
-    sortValue: (row) => row.id,
-    render: (row) => `point_${row.id}`,
-  },
-  {
-    key: 'value',
-    heading: 'Value',
-    sortValue: (row) => row.value,
-    render: (row) => row.value.toFixed(1),
-  },
-  {
-    key: 'time',
-    heading: 'Timestamp',
-    sortValue: (row) => row.time,
-    render: (row) => formatTimestamp(row.time),
-  },
-];
-
 function FilterTable({rows, indices, selected, onSelect}: FilterTableProps) {
-  const displayRows = useMemo(
-    () => Array.from(indices, (index) => rows[index]),
-    [indices, rows]
+  const columns = useMemo<readonly DataGridColumn<number>[]>(
+    () => [
+      {
+        key: 'id',
+        label: 'ID',
+        sortValue: (index) => index,
+        renderCell: (index) => `point_${index}`,
+      },
+      {
+        key: 'value',
+        label: 'Value',
+        sortValue: (index) => rows[index].value,
+        renderCell: (index) => rows[index].value.toFixed(1),
+      },
+      {
+        key: 'time',
+        label: 'Timestamp',
+        sortValue: (index) => rows[index].time,
+        renderCell: (index) => formatTimestamp(rows[index].time),
+      },
+    ],
+    [rows]
   );
   return (
-    <VirtualDataTable
-      rows={displayRows}
-      columns={filterTableColumns}
-      rowKey={(row) => row.id}
-      selected={selected}
-      selectionKey={(row) => row.id}
-      onSelection={onSelect}
+    <DataGrid
+      columns={columns}
+      rowSource={{
+        rowCount: indices.length,
+        rowIdAt: (position) => indices[position],
+      }}
+      selection={{isSelected: (id) => selected.has(id), onSelection: onSelect}}
       className="filter-table-panel"
       headerClassName="filter-table-header"
       rowClassName=""
       scrollClassName="filter-table-scroll"
       spacerClassName="filter-table-spacer"
       estimateSize={29}
-      initialSort={{column: 0, descending: false}}
     />
   );
 }

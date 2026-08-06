@@ -1,8 +1,5 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {
-  VirtualDataTable,
-  type VirtualDataTableColumn,
-} from '../../toolkit/widgets';
+import {DataGrid, type DataGridColumn} from '../../toolkit/widgets';
 import Feature from 'ol/Feature.js';
 import Point from 'ol/geom/Point.js';
 import VectorLayer from 'ol/layer/Vector.js';
@@ -70,32 +67,37 @@ type IntegrationTableProps = {
   onContextMenu: (x: number, y: number, key: string) => void;
 };
 
-const integrationTableColumns: readonly VirtualDataTableColumn<IntegratedRow>[] =
-  (['layer', 'type', 'id', 'value'] as const).map((column) => ({
-    key: column,
-    heading: column[0].toUpperCase() + column.slice(1),
-    sortValue: (row: IntegratedRow) => row[column],
-    render: (row: IntegratedRow) => row[column],
-  }));
-
 function IntegrationTable({
   rows,
   selected,
   onSelection,
   onContextMenu,
 }: IntegrationTableProps) {
+  const rowsByKey = useMemo(
+    () => new Map(rows.map((row) => [row.key, row])),
+    [rows]
+  );
+  const columns = useMemo<readonly DataGridColumn<string>[]>(
+    () =>
+      (['layer', 'type', 'id', 'value'] as const).map((column) => ({
+        key: column,
+        label: column[0].toUpperCase() + column.slice(1),
+        sortValue: (key: string) => rowsByKey.get(key)![column],
+        renderCell: (key: string) => rowsByKey.get(key)![column],
+      })),
+    [rowsByKey]
+  );
   return (
-    <VirtualDataTable
-      rows={rows}
-      columns={integrationTableColumns}
-      rowKey={(row) => row.key}
-      selected={selected}
-      selectionKey={(row) => row.key}
-      onSelection={onSelection}
+    <DataGrid
+      columns={columns}
+      rowSource={{
+        rowCount: rows.length,
+        rowIdAt: (position) => rows[position].key,
+      }}
+      selection={{isSelected: (key) => selected.has(key), onSelection}}
       headerClassName="reference-table-header reference-integration-columns"
       rowClassName="reference-table-row reference-integration-columns"
-      onRowContextMenu={(x, y, row) => onContextMenu(x, y, row.key)}
-      initialSort={{column: 0, descending: false}}
+      onRowContextMenu={(x, y, key) => onContextMenu(x, y, key)}
     />
   );
 }
