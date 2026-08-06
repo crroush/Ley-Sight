@@ -38,7 +38,7 @@ export function VirtualDataTable<Row, Key extends string | number>({
   selected,
   selectionKey,
   onSelection,
-  initialSort: _initialSort,
+  initialSort,
   onRowContextMenu,
   ...presentation
 }: VirtualDataTableProps<Row, Key>) {
@@ -50,6 +50,7 @@ export function VirtualDataTable<Row, Key extends string | number>({
       renderCell: (index) => column.render(rows[index], index),
     })
   );
+  const initialColumn = initialSort ? columns[initialSort.column] : undefined;
   const props: DataGridProps<number> = {
     ...presentation,
     columns: gridColumns,
@@ -66,6 +67,13 @@ export function VirtualDataTable<Row, Key extends string | number>({
       ? (x, y, index) => onRowContextMenu(x, y, rows[index], index)
       : undefined,
     rowKey: (index) => rowKey(rows[index], index),
+    initialSort:
+      initialSort && initialColumn
+        ? {
+            columnKey: initialColumn.key,
+            direction: initialSort.descending ? 'descending' : 'ascending',
+          }
+        : undefined,
   };
   return <DataGrid {...props} />;
 }

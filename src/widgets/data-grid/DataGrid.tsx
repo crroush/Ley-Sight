@@ -61,6 +61,7 @@ export interface DataGridProps<RowId> {
   onPageChange?: (page: number) => void;
   emptyContent?: ReactNode;
   onSortingChange?: (sorting: boolean) => void;
+  initialSort?: DataGridSortRequest;
   rowKey?: (rowId: RowId, position: number) => string | number;
   onRowContextMenu?: (x: number, y: number, rowId: RowId) => void;
 }
@@ -83,6 +84,7 @@ export function DataGrid<RowId>({
   onPageChange,
   emptyContent,
   onSortingChange,
+  initialSort,
   rowKey = (rowId) => String(rowId),
   onRowContextMenu,
 }: DataGridProps<RowId>) {
@@ -118,7 +120,7 @@ export function DataGrid<RowId>({
     setSort(null);
     setSortedRows(null);
     onSortingChange?.(false);
-  }, [rowSource.revision]);
+  }, [rowSource.revision, rowSource.rowCount]);
 
   useEffect(() => {
     if (selection.focusRowId == null) return;
@@ -145,20 +147,16 @@ export function DataGrid<RowId>({
     else virtualizer.scrollToIndex(position - pageStart, {align: 'auto'});
   }, [
     rowSource.revision,
+    page,
     selection.focusRowId,
     selection.revision,
     sortedRows,
   ]);
 
-  const requestSort = async (column: DataGridColumn<RowId>): Promise<void> => {
-    if (!column.sortValue && !rowSource.sort) return;
-    const request: DataGridSortRequest = {
-      columnKey: column.key,
-      direction:
-        sort?.columnKey === column.key && sort.direction === 'ascending'
-          ? 'descending'
-          : 'ascending',
-    };
+  const applySort = async (
+    column: DataGridColumn<RowId>,
+    request: DataGridSortRequest
+  ): Promise<void> => {
     const revision = ++sortRevisionRef.current;
     setSort(request);
     onSortingChange?.(true);
@@ -196,6 +194,29 @@ export function DataGrid<RowId>({
     }
   };
 
+  const requestSort = (column: DataGridColumn<RowId>): void => {
+    if (!column.sortValue && !rowSource.sort) return;
+    void applySort(column, {
+      columnKey: column.key,
+      direction:
+        sort?.columnKey === column.key && sort.direction === 'ascending'
+          ? 'descending'
+          : 'ascending',
+    });
+  };
+
+  const initialSortAppliedRef = useRef(false);
+  useEffect(() => {
+    if (initialSortAppliedRef.current || !initialSort) return;
+    initialSortAppliedRef.current = true;
+    const column = columns.find(
+      (candidate) => candidate.key === initialSort.columnKey
+    );
+    if (column && (column.sortValue || rowSource.sort)) {
+      void applySort(column, initialSort);
+    }
+  }, [columns, initialSort, rowSource]);
+
   const header = (
     <div
       className={headerClassName}
@@ -213,7 +234,7 @@ export function DataGrid<RowId>({
             className={active ? 'is-sorted' : ''}
             style={column.width == null ? undefined : {width: column.width}}
             aria-sort={active ? sort.direction : 'none'}
-            onClick={() => void requestSort(column)}
+            onClick={() => requestSort(column)}
           >
             <span>{column.label}</span>
             {active && sort.direction === 'ascending' ? (

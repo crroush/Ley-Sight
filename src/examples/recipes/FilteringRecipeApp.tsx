@@ -143,6 +143,7 @@ function FilterTable({rows, indices, selected, onSelect}: FilterTableProps) {
       rowSource={{
         rowCount: indices.length,
         rowIdAt: (position) => indices[position],
+        revision: indices,
       }}
       selection={{isSelected: (id) => selected.has(id), onSelection: onSelect}}
       className="filter-table-panel"
