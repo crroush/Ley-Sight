@@ -1,39 +1,126 @@
-import type {ComponentType} from 'react';
-import {UseCasesApp} from '../UseCasesApp';
-import {CsvWorkspaceApp} from '../apps/csv/CsvWorkspaceApp';
-import {BasicMapExampleApp} from '../demos/BasicMapExampleApp';
-import {DelayedRasterExampleApp} from '../demos/DelayedRasterExampleApp';
-import {
-  FastPointsPerformanceExampleApp,
-  GeoUncertaintyExampleApp,
-} from '../demos/FastPointsExamples';
-import {FilteringDemoApp} from '../demos/FilteringDemoApp';
-import {GradientTracksExampleApp} from '../demos/GradientTracksExampleApp';
-import {LayerManagerExampleApp} from '../demos/LayerManagerExampleApp';
-import {LayerTypesExampleApp} from '../demos/LayerTypesExampleApp';
-import {
-  DualTableLinkingExampleApp,
-  MetadataOnlyLinkingExampleApp,
-} from '../demos/LinkedTableExamples';
-import {MapRightClickExampleApp} from '../demos/MapRightClickExampleApp';
-import {ModifiedMapClicksExampleApp} from '../demos/ModifiedMapClicksExampleApp';
-import {MovableVectorExampleApp} from '../demos/MovableVectorExampleApp';
-import {RasterOverlayExampleApp} from '../demos/RasterOverlayExampleApp';
-import {
-  FeatureSelectionExampleApp,
-  SelectionRecolorExampleApp,
-} from '../demos/SelectionExamples';
-import {
-  TimeHistogramExampleApp,
-  VirtualFeatureTableExampleApp,
-} from '../demos/TableExamples';
-import {TableIntegrationExampleApp} from '../demos/TableIntegrationExampleApp';
-import {
-  CoordinateDisplayExampleApp,
-  FitToDataExampleApp,
-  MeasurementExampleApp,
-} from '../demos/UtilityExamples';
+import {lazy, type ComponentType, type LazyExoticComponent} from 'react';
 import {USE_CASES, type ParityStatus} from '../examples/data/useCases';
+
+type RouteComponent = ComponentType | LazyExoticComponent<ComponentType>;
+
+function lazyRoute(load: () => Promise<ComponentType>): RouteComponent {
+  return lazy(async () => ({default: await load()}));
+}
+
+const UseCasesApp = lazyRoute(async () =>
+  import('../UseCasesApp').then((module) => module.UseCasesApp)
+);
+const CsvWorkspaceApp = lazyRoute(async () =>
+  import('../apps/csv/CsvWorkspaceApp').then((module) => module.CsvWorkspaceApp)
+);
+const BasicMapExampleApp = lazyRoute(async () =>
+  import('../demos/BasicMapExampleApp').then(
+    (module) => module.BasicMapExampleApp
+  )
+);
+const DelayedRasterExampleApp = lazyRoute(async () =>
+  import('../demos/DelayedRasterExampleApp').then(
+    (module) => module.DelayedRasterExampleApp
+  )
+);
+const FastPointsPerformanceExampleApp = lazyRoute(async () =>
+  import('../demos/FastPointsExamples').then(
+    (module) => module.FastPointsPerformanceExampleApp
+  )
+);
+const GeoUncertaintyExampleApp = lazyRoute(async () =>
+  import('../demos/FastPointsExamples').then(
+    (module) => module.GeoUncertaintyExampleApp
+  )
+);
+const FilteringDemoApp = lazyRoute(async () =>
+  import('../demos/FilteringDemoApp').then((module) => module.FilteringDemoApp)
+);
+const GradientTracksExampleApp = lazyRoute(async () =>
+  import('../demos/GradientTracksExampleApp').then(
+    (module) => module.GradientTracksExampleApp
+  )
+);
+const LayerManagerExampleApp = lazyRoute(async () =>
+  import('../demos/LayerManagerExampleApp').then(
+    (module) => module.LayerManagerExampleApp
+  )
+);
+const LayerTypesExampleApp = lazyRoute(async () =>
+  import('../demos/LayerTypesExampleApp').then(
+    (module) => module.LayerTypesExampleApp
+  )
+);
+const DualTableLinkingExampleApp = lazyRoute(async () =>
+  import('../demos/LinkedTableExamples').then(
+    (module) => module.DualTableLinkingExampleApp
+  )
+);
+const MetadataOnlyLinkingExampleApp = lazyRoute(async () =>
+  import('../demos/LinkedTableExamples').then(
+    (module) => module.MetadataOnlyLinkingExampleApp
+  )
+);
+const MapRightClickExampleApp = lazyRoute(async () =>
+  import('../demos/MapRightClickExampleApp').then(
+    (module) => module.MapRightClickExampleApp
+  )
+);
+const ModifiedMapClicksExampleApp = lazyRoute(async () =>
+  import('../demos/ModifiedMapClicksExampleApp').then(
+    (module) => module.ModifiedMapClicksExampleApp
+  )
+);
+const MovableVectorExampleApp = lazyRoute(async () =>
+  import('../demos/MovableVectorExampleApp').then(
+    (module) => module.MovableVectorExampleApp
+  )
+);
+const RasterOverlayExampleApp = lazyRoute(async () =>
+  import('../demos/RasterOverlayExampleApp').then(
+    (module) => module.RasterOverlayExampleApp
+  )
+);
+const FeatureSelectionExampleApp = lazyRoute(async () =>
+  import('../demos/SelectionExamples').then(
+    (module) => module.FeatureSelectionExampleApp
+  )
+);
+const SelectionRecolorExampleApp = lazyRoute(async () =>
+  import('../demos/SelectionExamples').then(
+    (module) => module.SelectionRecolorExampleApp
+  )
+);
+const TimeHistogramExampleApp = lazyRoute(async () =>
+  import('../demos/TableExamples').then(
+    (module) => module.TimeHistogramExampleApp
+  )
+);
+const VirtualFeatureTableExampleApp = lazyRoute(async () =>
+  import('../demos/TableExamples').then(
+    (module) => module.VirtualFeatureTableExampleApp
+  )
+);
+const TableIntegrationExampleApp = lazyRoute(async () =>
+  import('../demos/TableIntegrationExampleApp').then(
+    (module) => module.TableIntegrationExampleApp
+  )
+);
+const CoordinateDisplayExampleApp = lazyRoute(async () =>
+  import('../demos/UtilityExamples').then(
+    (module) => module.CoordinateDisplayExampleApp
+  )
+);
+const FitToDataExampleApp = lazyRoute(async () =>
+  import('../demos/UtilityExamples').then(
+    (module) => module.FitToDataExampleApp
+  )
+);
+const MeasurementExampleApp = lazyRoute(async () =>
+  import('../demos/UtilityExamples').then(
+    (module) => module.MeasurementExampleApp
+  )
+);
 
 export type AppShellId =
   | 'launcher'
@@ -57,7 +144,7 @@ export type RouteEntry = {
   shell: AppShellId;
   label: string;
   description: string;
-  component: ComponentType;
+  component: RouteComponent;
   example?: string;
   demo?: DemoMetadata;
 };
@@ -116,7 +203,7 @@ const shellRoutes: readonly RouteEntry[] = [
   },
 ];
 
-const exampleComponents: Record<number, ComponentType> = {
+const exampleComponents: Record<number, RouteComponent> = {
   1: BasicMapExampleApp,
   2: LayerTypesExampleApp,
   3: FastPointsPerformanceExampleApp,
