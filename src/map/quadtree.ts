@@ -246,3 +246,4 @@ export function nearestPoint(
   }
   return best;
 }
+/** @internal Rendering index implementation. Import supported APIs from toolkit/map. */

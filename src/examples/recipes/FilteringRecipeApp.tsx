@@ -2,12 +2,11 @@ import {useEffect, useMemo, useRef, useState} from 'react';
 import {
   VirtualDataTable,
   type VirtualDataTableColumn,
-} from '../../widgets/VirtualDataTable';
+} from '../../toolkit/widgets';
 import {containsCoordinate} from 'ol/extent.js';
 import {fromLonLat} from 'ol/proj.js';
-import type {DatasetSummary, PackedDataset} from '../../lib/types';
-import {buildCompactSpatialIndex} from '../../map/compactIndex';
-import {FastPointEngine} from '../../map/FastPointEngine';
+import type {DatasetSummary, PackedDataset} from '../../toolkit/data';
+import {buildCompactSpatialIndex, FastPointEngine} from '../../toolkit/map';
 import {createSeededRandom} from '../data/sampleData';
 
 type FilterRow = {

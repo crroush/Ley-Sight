@@ -67,3 +67,4 @@ export class GrowableTypedArray<T extends TypedArray> {
     this.values = next;
   }
 }
+/** @internal Growable buffer implementation used by map indexing. */
