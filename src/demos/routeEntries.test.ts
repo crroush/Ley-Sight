@@ -8,29 +8,30 @@ function source(name: string): string {
   return readFileSync(new URL(name, ROOT), 'utf8');
 }
 
-test('standalone route defaults never fall back to grouped showcase demos', () => {
-  const raster = source('rasterMain.tsx');
-  const vector = source('vectorMain.tsx');
-  const linked = source('linkedTablesMain.tsx');
-  const events = source('mapEventsMain.tsx');
-
-  assert.match(raster, /<RasterOverlayExampleApp \/>/);
-  assert.doesNotMatch(raster, /RasterDemoApp/);
-  assert.match(vector, /return <BasicMapExampleApp \/>/);
-  assert.doesNotMatch(vector, /VectorDemoApp/);
-  assert.match(linked, /return <DualTableLinkingExampleApp \/>/);
-  assert.doesNotMatch(linked, /LinkedTablesDemoApp/);
-  assert.match(events, /<MapRightClickExampleApp \/>/);
-  assert.doesNotMatch(events, /MapEventsDemoApp/);
+test('standalone route defaults are declared in the route registry', () => {
+  const registry = source('routes/routeRegistry.ts');
+  assert.match(
+    registry,
+    /id: 'raster'[\s\S]*?component: RasterOverlayExampleApp/
+  );
+  assert.match(registry, /id: 'vector'[\s\S]*?component: BasicMapExampleApp/);
+  assert.match(
+    registry,
+    /id: 'linked-tables'[\s\S]*?component: DualTableLinkingExampleApp/
+  );
+  assert.match(
+    registry,
+    /id: 'map-events'[\s\S]*?component: MapRightClickExampleApp/
+  );
 });
 
 test('every standalone OpenLayers entry imports the OpenLayers controls CSS', () => {
   for (const entry of [
-    'filteringMain.tsx',
-    'linkedTablesMain.tsx',
-    'mapEventsMain.tsx',
-    'rasterMain.tsx',
-    'vectorMain.tsx',
+    'apps/filtering/index.tsx',
+    'apps/linked-tables/index.tsx',
+    'apps/map-events/index.tsx',
+    'apps/raster/index.tsx',
+    'apps/vector/index.tsx',
   ]) {
     assert.match(source(entry), /import ['"]ol\/ol\.css['"]/, entry);
   }

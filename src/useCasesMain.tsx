@@ -1,9 +1,3 @@
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
-import {UseCasesApp} from './UseCasesApp';
+import {mountLauncherApp} from './apps/launcher';
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <UseCasesApp />
-  </StrictMode>
-);
+mountLauncherApp();
