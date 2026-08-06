@@ -34,6 +34,8 @@ export interface DataGridRowSource<RowId> {
   revision?: unknown;
   /** Optional capability. Large/packed sources can delegate this to a worker. */
   sort?: (request: DataGridSortRequest) => Promise<ArrayLike<RowId>>;
+  /** Optionally re-filter an existing adapter sort after a same-size revision. */
+  refreshSort?: (request: DataGridSortRequest) => Promise<ArrayLike<RowId>>;
 }
 
 export interface DataGridSelectionModel<RowId> {
@@ -112,16 +114,13 @@ export function DataGrid<RowId>({
   });
 
   useEffect(() => {
-    anchorRef.current = null;
     scrollRef.current?.scrollTo({top: 0});
-  }, [rowSource.revision, page]);
+  }, [page]);
 
   useEffect(() => {
-    sortRevisionRef.current += 1;
-    setSort(null);
-    setSortedRows(null);
-    onSortingChange?.(false);
-  }, [rowSource.revision, rowSource.rowCount]);
+    anchorRef.current = null;
+    scrollRef.current?.scrollTo({top: 0});
+  }, [rowSource.revision]);
 
   useEffect(() => {
     if (selection.focusRowId == null) return;
@@ -171,44 +170,84 @@ export function DataGrid<RowId>({
 
   const applySort = async (
     column: DataGridColumn<RowId>,
-    request: DataGridSortRequest
+    request: DataGridSortRequest,
+    refresh = false
   ): Promise<void> => {
     const revision = ++sortRevisionRef.current;
+    anchorRef.current = null;
     setSort(request);
     onSortingChange?.(true);
     try {
-      const rows = rowSource.sort
-        ? await rowSource.sort(request)
-        : Array.from({length: rowSource.rowCount}, (_, position) => position)
-            .sort((first, second) => {
-              const firstRowId = rowSource.rowIdAt(first);
-              const secondRowId = rowSource.rowIdAt(second);
-              const firstValue = column.sortValue!(firstRowId, first);
-              const secondValue = column.sortValue!(secondRowId, second);
-              const difference =
-                typeof firstValue === 'number' &&
-                typeof secondValue === 'number'
-                  ? firstValue - secondValue
-                  : String(firstValue).localeCompare(
-                      String(secondValue),
-                      undefined,
-                      {
-                        numeric: true,
-                      }
-                    );
-              return request.direction === 'descending'
-                ? -difference
-                : difference;
-            })
-            .map((position) => rowSource.rowIdAt(position));
+      const rows =
+        refresh && rowSource.refreshSort
+          ? await rowSource.refreshSort(request)
+          : rowSource.sort
+            ? await rowSource.sort(request)
+            : Array.from(
+                {length: rowSource.rowCount},
+                (_, position) => position
+              )
+                .sort((first, second) => {
+                  const firstRowId = rowSource.rowIdAt(first);
+                  const secondRowId = rowSource.rowIdAt(second);
+                  const firstValue = column.sortValue!(firstRowId, first);
+                  const secondValue = column.sortValue!(secondRowId, second);
+                  const difference =
+                    typeof firstValue === 'number' &&
+                    typeof secondValue === 'number'
+                      ? firstValue - secondValue
+                      : String(firstValue).localeCompare(
+                          String(secondValue),
+                          undefined,
+                          {
+                            numeric: true,
+                          }
+                        );
+                  return request.direction === 'descending'
+                    ? -difference
+                    : difference;
+                })
+                .map((position) => rowSource.rowIdAt(position));
       if (revision === sortRevisionRef.current) {
         setSortedRows(rows);
-        onPageChange?.(0);
+        if (!refresh) onPageChange?.(0);
       }
     } finally {
       if (revision === sortRevisionRef.current) onSortingChange?.(false);
     }
   };
+
+  const sourceStateRef = useRef({
+    revision: rowSource.revision,
+    rowCount: rowSource.rowCount,
+  });
+  useEffect(() => {
+    const previous = sourceStateRef.current;
+    if (
+      Object.is(previous.revision, rowSource.revision) &&
+      previous.rowCount === rowSource.rowCount
+    )
+      return;
+    sourceStateRef.current = {
+      revision: rowSource.revision,
+      rowCount: rowSource.rowCount,
+    };
+    sortRevisionRef.current += 1;
+    setSortedRows(null);
+    if (!sort) {
+      onSortingChange?.(false);
+      return;
+    }
+    const column = columns.find(
+      (candidate) => candidate.key === sort.columnKey
+    );
+    if (!column || (!column.sortValue && !rowSource.sort)) {
+      setSort(null);
+      onSortingChange?.(false);
+      return;
+    }
+    void applySort(column, sort, previous.rowCount === rowSource.rowCount);
+  }, [rowSource.revision, rowSource.rowCount]);
 
   const requestSort = (column: DataGridColumn<RowId>): void => {
     if (!column.sortValue && !rowSource.sort) return;

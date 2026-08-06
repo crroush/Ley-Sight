@@ -169,6 +169,27 @@ export function usePackedCsvAdapter({
       positionOf: (index) =>
         visibleIndices ? visibleIndices.indexOf(index) : index,
       revision: visibleIndices ?? rowCount,
+      refreshSort: async (): Promise<ArrayLike<number>> => {
+        const worker = workerRef.current;
+        if (!worker || !engine || !rowCount) return [];
+        const requestId = ++requestIdRef.current;
+        const visible = visibleIndices?.slice() as
+          | Uint32Array<ArrayBuffer>
+          | undefined;
+        const result = new Promise<ArrayLike<number>>((resolve) =>
+          pendingRef.current.set(requestId, resolve)
+        );
+        worker.postMessage(
+          {
+            type: 'filter',
+            requestId,
+            focusIndex: engine.selectionFocusIndex,
+            visibleIndices: visible ?? null,
+          },
+          visible ? [visible.buffer] : []
+        );
+        return result;
+      },
       sort: async (
         request: DataGridSortRequest
       ): Promise<ArrayLike<number>> => {
