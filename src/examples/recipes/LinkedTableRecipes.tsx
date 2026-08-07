@@ -106,11 +106,21 @@ function VirtualGrid({
       })),
     [cells, headings, sortValues]
   );
+  const firstSelected = selected.values().next().value as number | undefined;
   return (
     <DataGrid
       columns={tableColumns}
-      rowSource={{rowCount: rows.length, rowIdAt: (position) => rows[position]}}
-      selection={{isSelected: (row) => selected.has(row), onSelection}}
+      rowSource={{
+        rowCount: rows.length,
+        rowIdAt: (position) => rows[position],
+        positionOf: (row) => (row >= 0 && row < rows.length ? row : -1),
+      }}
+      selection={{
+        isSelected: (row) => selected.has(row),
+        onSelection,
+        focusRowId: firstSelected,
+      }}
+      rowKey={(row) => rowKey(row)}
       gridTemplateColumns={columns}
     />
   );
