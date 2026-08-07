@@ -948,6 +948,11 @@ button {
   padding: 0 12px;
 }
 
+/* Let a composed DataGrid participate in the CSV panel's header/body rows. */
+.data-grid-contents {
+  display: contents;
+}
+
 .table-hint {
   color: var(--muted);
   font-size: 9px;

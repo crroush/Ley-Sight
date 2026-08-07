@@ -1,4 +1,5 @@
 export * from './VirtualDataTable';
+export * from './data-grid/DataGrid';
 export * from './SplitPane';
 export * from './StatusBar';
 export * from './SelectionSummary';

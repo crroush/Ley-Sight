@@ -6,6 +6,14 @@ export {
   type VirtualDataTableColumn,
   type VirtualDataTableProps,
 } from '../widgets/VirtualDataTable';
+export {
+  DataGrid,
+  type DataGridColumn,
+  type DataGridProps,
+  type DataGridRowSource,
+  type DataGridSelectionModel,
+  type DataGridSortRequest,
+} from '../widgets/data-grid/DataGrid';
 export {FileImport} from '../widgets/FileImport';
 export {LayerControls, type LayerToggle} from '../widgets/LayerControls';
 export {MapViewport} from '../widgets/MapViewport';
