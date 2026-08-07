@@ -41,6 +41,8 @@ export interface DataGridRowSource<RowId> {
 export interface DataGridSelectionModel<RowId> {
   isSelected: (rowId: RowId) => boolean;
   onSelection: (rowIds: readonly RowId[], additive: boolean) => void;
+  /** Handles large ranges without forcing DataGrid to allocate a dense array. */
+  onRangeSelection?: (rowIds: Iterable<RowId>, additive: boolean) => void;
   focusRowId?: RowId;
   revision?: number;
 }
@@ -221,33 +223,52 @@ export function DataGrid<RowId>({
     revision: rowSource.revision,
     rowCount: rowSource.rowCount,
   });
+  const activeColumnRef = useRef(
+    sort
+      ? columns.find((candidate) => candidate.key === sort.columnKey)
+      : undefined
+  );
   useEffect(() => {
     const previous = sourceStateRef.current;
-    if (
-      Object.is(previous.revision, rowSource.revision) &&
-      previous.rowCount === rowSource.rowCount
-    )
-      return;
-    sourceStateRef.current = {
-      revision: rowSource.revision,
-      rowCount: rowSource.rowCount,
-    };
+    const sourceChanged =
+      !Object.is(previous.revision, rowSource.revision) ||
+      previous.rowCount !== rowSource.rowCount;
+    const column = sort
+      ? columns.find((candidate) => candidate.key === sort.columnKey)
+      : undefined;
+    const columnChanged = column !== activeColumnRef.current;
+    if (!sourceChanged && !columnChanged) return;
+    if (sourceChanged) {
+      sourceStateRef.current = {
+        revision: rowSource.revision,
+        rowCount: rowSource.rowCount,
+      };
+    }
     sortRevisionRef.current += 1;
     setSortedRows(null);
     if (!sort) {
       onSortingChange?.(false);
       return;
     }
-    const column = columns.find(
-      (candidate) => candidate.key === sort.columnKey
-    );
     if (!column || (!column.sortValue && !rowSource.sort)) {
       setSort(null);
       onSortingChange?.(false);
       return;
     }
-    void applySort(column, sort, previous.rowCount === rowSource.rowCount);
-  }, [rowSource.revision, rowSource.rowCount]);
+    void applySort(
+      column,
+      sort,
+      sourceChanged &&
+        !columnChanged &&
+        previous.rowCount === rowSource.rowCount
+    );
+  }, [columns, rowSource.revision, rowSource.rowCount]);
+
+  useEffect(() => {
+    activeColumnRef.current = sort
+      ? columns.find((candidate) => candidate.key === sort.columnKey)
+      : undefined;
+  }, [columns, sort]);
 
   const requestSort = (column: DataGridColumn<RowId>): void => {
     if (!column.sortValue && !rowSource.sort) return;
@@ -355,12 +376,13 @@ export function DataGrid<RowId>({
                     if (event.shiftKey && anchorRef.current != null) {
                       const first = Math.min(anchorRef.current, position);
                       const last = Math.max(anchorRef.current, position);
-                      selection.onSelection(
-                        Array.from({length: last - first + 1}, (_, offset) =>
-                          rowIdAt(first + offset)
-                        ),
-                        additive
-                      );
+                      const rows = function* (): IterableIterator<RowId> {
+                        for (let index = first; index <= last; index += 1)
+                          yield rowIdAt(index);
+                      };
+                      if (selection.onRangeSelection)
+                        selection.onRangeSelection(rows(), additive);
+                      else selection.onSelection(Array.from(rows()), additive);
                       return;
                     }
                     anchorRef.current = position;

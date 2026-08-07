@@ -1,4 +1,4 @@
-import type {ReactNode} from 'react';
+import {useMemo, type ReactNode} from 'react';
 import {
   DataGrid,
   type DataGridColumn,
@@ -42,13 +42,15 @@ export function VirtualDataTable<Row, Key extends string | number>({
   onRowContextMenu,
   ...presentation
 }: VirtualDataTableProps<Row, Key>) {
-  const gridColumns: readonly DataGridColumn<number>[] = columns.map(
-    (column) => ({
-      key: column.key,
-      label: column.heading,
-      sortValue: (index) => column.sortValue(rows[index], index),
-      renderCell: (index) => column.render(rows[index], index),
-    })
+  const gridColumns = useMemo<readonly DataGridColumn<number>[]>(
+    () =>
+      columns.map((column) => ({
+        key: column.key,
+        label: column.heading,
+        sortValue: (index) => column.sortValue(rows[index], index),
+        renderCell: (index) => column.render(rows[index], index),
+      })),
+    [columns, rows]
   );
   const initialColumn = initialSort ? columns[initialSort.column] : undefined;
   const firstSelected = selected.values().next().value as Key | undefined;

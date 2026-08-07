@@ -115,6 +115,8 @@ export function VirtualDataTable({
             if (indices.length === 1) onSelectRow(indices[0], additive);
             else engine?.selectIndices(Uint32Array.from(indices), !additive);
           },
+          onRangeSelection: (indices, additive) =>
+            engine?.selectIndices(Uint32Array.from(indices), !additive),
           focusRowId:
             (engine?.selectionFocusIndex ?? -1) >= 0
               ? engine?.selectionFocusIndex

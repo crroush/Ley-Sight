@@ -95,6 +95,7 @@ function IntegrationTable({
         rowIdAt: (position) => rows[position].key,
       }}
       selection={{isSelected: (key) => selected.has(key), onSelection}}
+      initialSort={{columnKey: 'layer', direction: 'ascending'}}
       headerClassName="reference-table-header reference-integration-columns"
       rowClassName="reference-table-row reference-integration-columns"
       onRowContextMenu={(x, y, key) => onContextMenu(x, y, key)}

@@ -114,6 +114,7 @@ type FilterTableProps = {
 };
 
 function FilterTable({rows, indices, selected, onSelect}: FilterTableProps) {
+  const firstSelected = selected.values().next().value as number | undefined;
   const columns = useMemo<readonly DataGridColumn<number>[]>(
     () => [
       {
@@ -143,9 +144,14 @@ function FilterTable({rows, indices, selected, onSelect}: FilterTableProps) {
       rowSource={{
         rowCount: indices.length,
         rowIdAt: (position) => indices[position],
+        positionOf: (id) => indices.indexOf(id),
         revision: indices,
       }}
-      selection={{isSelected: (id) => selected.has(id), onSelection: onSelect}}
+      selection={{
+        isSelected: (id) => selected.has(id),
+        onSelection: onSelect,
+        focusRowId: firstSelected,
+      }}
       className="filter-table-panel"
       headerClassName="filter-table-header"
       rowClassName=""
