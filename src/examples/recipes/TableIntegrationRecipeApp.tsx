@@ -77,6 +77,11 @@ function IntegrationTable({
     () => new Map(rows.map((row) => [row.key, row])),
     [rows]
   );
+  const rowPositions = useMemo(
+    () => new Map(rows.map((row, index) => [row.key, index])),
+    [rows]
+  );
+  const firstSelected = selected.values().next().value as string | undefined;
   const columns = useMemo<readonly DataGridColumn<string>[]>(
     () =>
       (['layer', 'type', 'id', 'value'] as const).map((column) => ({
@@ -93,8 +98,14 @@ function IntegrationTable({
       rowSource={{
         rowCount: rows.length,
         rowIdAt: (position) => rows[position].key,
+        positionOf: (key) => rowPositions.get(key) ?? -1,
+        revision: rows,
       }}
-      selection={{isSelected: (key) => selected.has(key), onSelection}}
+      selection={{
+        isSelected: (key) => selected.has(key),
+        onSelection,
+        focusRowId: firstSelected,
+      }}
       initialSort={{columnKey: 'layer', direction: 'ascending'}}
       headerClassName="reference-table-header reference-integration-columns"
       rowClassName="reference-table-row reference-integration-columns"
