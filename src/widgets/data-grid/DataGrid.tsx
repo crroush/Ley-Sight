@@ -22,6 +22,8 @@ export interface DataGridColumn<RowId> {
   width?: number;
   renderCell: (rowId: RowId, position: number) => ReactNode;
   sortValue?: (rowId: RowId, position: number) => string | number;
+  /** Change when this column's sorting semantics change without changing its key. */
+  sortRevision?: unknown;
 }
 
 /** A positional adapter lets the grid virtualize data without materializing rows. */
@@ -177,6 +179,10 @@ export function DataGrid<RowId>({
     refresh = false
   ): Promise<void> => {
     const revision = ++sortRevisionRef.current;
+    activeColumnRef.current = {
+      key: column.key,
+      sortRevision: column.sortRevision,
+    };
     anchorRef.current = null;
     setSort(request);
     onSortingChange?.(true);
@@ -224,11 +230,9 @@ export function DataGrid<RowId>({
     revision: rowSource.revision,
     rowCount: rowSource.rowCount,
   });
-  const activeColumnRef = useRef(
-    sort
-      ? columns.find((candidate) => candidate.key === sort.columnKey)
-      : undefined
-  );
+  const activeColumnRef = useRef<
+    {key: string | number; sortRevision: unknown} | undefined
+  >(undefined);
   useEffect(() => {
     const previous = sourceStateRef.current;
     const sourceChanged =
@@ -237,7 +241,12 @@ export function DataGrid<RowId>({
     const column = sort
       ? columns.find((candidate) => candidate.key === sort.columnKey)
       : undefined;
-    const columnChanged = column !== activeColumnRef.current;
+    const activeColumn = activeColumnRef.current;
+    const columnChanged =
+      activeColumn != null &&
+      (column == null ||
+        column.key !== activeColumn.key ||
+        !Object.is(column.sortRevision, activeColumn.sortRevision));
     if (!sourceChanged && !columnChanged) return;
     if (sourceChanged) {
       sourceStateRef.current = {
@@ -264,12 +273,6 @@ export function DataGrid<RowId>({
         previous.rowCount === rowSource.rowCount
     );
   }, [columns, rowSource.revision, rowSource.rowCount]);
-
-  useEffect(() => {
-    activeColumnRef.current = sort
-      ? columns.find((candidate) => candidate.key === sort.columnKey)
-      : undefined;
-  }, [columns, sort]);
 
   const requestSort = (column: DataGridColumn<RowId>): void => {
     if (!column.sortValue && !rowSource.sort) return;
