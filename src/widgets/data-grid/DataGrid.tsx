@@ -122,7 +122,7 @@ export function DataGrid<RowId>({
   useEffect(() => {
     anchorRef.current = null;
     scrollRef.current?.scrollTo({top: 0});
-  }, [rowSource.revision]);
+  }, [rowSource.revision, rowSource.rowCount]);
 
   useEffect(() => {
     if (selection.focusRowId == null) return;
