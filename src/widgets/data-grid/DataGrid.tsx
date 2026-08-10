@@ -154,6 +154,7 @@ export function DataGrid<RowId>({
     }
   }, [
     rowSource.revision,
+    rowSource.rowCount,
     selection.focusRowId,
     selection.revision,
     sortedRows,
