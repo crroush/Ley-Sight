@@ -6,6 +6,8 @@ const EARTH_CIRCUMFERENCE_M = 2 * Math.PI * 6_378_137;
 const MIN_ANGLE_RADIANS = Math.PI / 180;
 const MAX_ANGLE_RADIANS = Math.PI / 6;
 const TARGET_SEGMENT_PIXELS = 16;
+const MAX_CURVATURE_ERROR_PIXELS = 1;
+const MAX_SUBDIVISION_DEPTH = 20;
 
 /** Builds a projected polyline following the shortest great-circle arcs. */
 export function geodesicLine(
@@ -32,14 +34,20 @@ export function geodesicLine(
     const start = lonLatVector(toLonLat(controls[index - 1]));
     const end = lonLatVector(toLonLat(controls[index]));
     const angle = Math.acos(clamp(dot(start, end), -1, 1));
-    const steps = Math.max(1, Math.ceil(angle / maxAngleRadians));
-    for (let step = 1; step <= steps; step += 1) {
-      const vector = interpolate(start, end, angle, step / steps);
-      const projected = fromLonLat([
-        (Math.atan2(vector[1], vector[0]) * 180) / Math.PI,
-        (Math.atan2(vector[2], Math.hypot(vector[0], vector[1])) * 180) /
-          Math.PI,
-      ]);
+    const projectedStart = result.at(-1)!;
+    const projectedEnd = projectVector(end, projectedStart[0]);
+    const arc: Coordinate[] = [];
+    subdivideArc(
+      start,
+      end,
+      angle,
+      projectedStart,
+      projectedEnd,
+      maxAngleRadians,
+      resolution * MAX_CURVATURE_ERROR_PIXELS,
+      arc
+    );
+    for (const projected of arc) {
       // Avoid drawing nearly around the world when an arc crosses the dateline.
       while (projected[0] - previousX > EARTH_CIRCUMFERENCE_M / 2)
         projected[0] -= EARTH_CIRCUMFERENCE_M;
@@ -51,6 +59,90 @@ export function geodesicLine(
   }
   line.setCoordinates(result);
   return line;
+}
+
+function subdivideArc(
+  start: Coordinate,
+  end: Coordinate,
+  angle: number,
+  projectedStart: Coordinate,
+  projectedEnd: Coordinate,
+  maxAngleRadians: number,
+  maxError: number,
+  result: Coordinate[],
+  depth = 0
+): void {
+  const midpoint = interpolate(start, end, angle, 0.5);
+  const projectedMidpoint = projectVector(
+    midpoint,
+    (projectedStart[0] + projectedEnd[0]) / 2
+  );
+  const needsSubdivision =
+    angle > maxAngleRadians ||
+    pointToSegmentDistance(projectedMidpoint, projectedStart, projectedEnd) >
+      maxError;
+
+  if (needsSubdivision && depth < MAX_SUBDIVISION_DEPTH) {
+    const halfAngle = angle / 2;
+    subdivideArc(
+      start,
+      midpoint,
+      halfAngle,
+      projectedStart,
+      projectedMidpoint,
+      maxAngleRadians,
+      maxError,
+      result,
+      depth + 1
+    );
+    subdivideArc(
+      midpoint,
+      end,
+      halfAngle,
+      projectedMidpoint,
+      projectedEnd,
+      maxAngleRadians,
+      maxError,
+      result,
+      depth + 1
+    );
+  } else {
+    result.push(projectedEnd);
+  }
+}
+
+function projectVector(vector: Coordinate, referenceX: number): Coordinate {
+  const projected = fromLonLat([
+    (Math.atan2(vector[1], vector[0]) * 180) / Math.PI,
+    (Math.atan2(vector[2], Math.hypot(vector[0], vector[1])) * 180) / Math.PI,
+  ]);
+  while (projected[0] - referenceX > EARTH_CIRCUMFERENCE_M / 2)
+    projected[0] -= EARTH_CIRCUMFERENCE_M;
+  while (projected[0] - referenceX < -EARTH_CIRCUMFERENCE_M / 2)
+    projected[0] += EARTH_CIRCUMFERENCE_M;
+  return projected;
+}
+
+function pointToSegmentDistance(
+  point: Coordinate,
+  start: Coordinate,
+  end: Coordinate
+): number {
+  const deltaX = end[0] - start[0];
+  const deltaY = end[1] - start[1];
+  const lengthSquared = deltaX * deltaX + deltaY * deltaY;
+  if (lengthSquared === 0)
+    return Math.hypot(point[0] - start[0], point[1] - start[1]);
+  const fraction = clamp(
+    ((point[0] - start[0]) * deltaX + (point[1] - start[1]) * deltaY) /
+      lengthSquared,
+    0,
+    1
+  );
+  return Math.hypot(
+    point[0] - (start[0] + fraction * deltaX),
+    point[1] - (start[1] + fraction * deltaY)
+  );
 }
 
 function lonLatVector([longitude, latitude]: Coordinate): Coordinate {
