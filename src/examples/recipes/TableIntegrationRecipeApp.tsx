@@ -1,5 +1,9 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {DataGrid, type DataGridColumn} from '../../toolkit/widgets';
+import {
+  DataGrid,
+  type DataGridColumn,
+  type DataGridSortRequest,
+} from '../../toolkit/widgets';
 import Feature from 'ol/Feature.js';
 import Point from 'ol/geom/Point.js';
 import VectorLayer from 'ol/layer/Vector.js';
@@ -60,6 +64,11 @@ const INITIAL_CITIES: IntegratedRow[] = [
   },
 ];
 
+const INITIAL_LAYER_SORT: DataGridSortRequest = {
+  columnKey: 'layer',
+  direction: 'ascending',
+};
+
 type IntegrationTableProps = {
   rows: readonly IntegratedRow[];
   selected: ReadonlySet<string>;
@@ -106,7 +115,7 @@ function IntegrationTable({
         onSelection,
         focusRowId: firstSelected,
       }}
-      initialSort={{columnKey: 'layer', direction: 'ascending'}}
+      initialSort={INITIAL_LAYER_SORT}
       headerClassName="reference-table-header reference-integration-columns"
       rowClassName="reference-table-row reference-integration-columns"
       onRowContextMenu={(x, y, key) => onContextMenu(x, y, key)}
