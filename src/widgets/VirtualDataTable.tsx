@@ -1,4 +1,4 @@
-import {useMemo, type ReactNode} from 'react';
+import {useMemo, useRef, type ReactNode} from 'react';
 import {
   DataGrid,
   type DataGridColumn,
@@ -60,6 +60,13 @@ export function VirtualDataTable<Row, Key extends string | number>({
       : rows.findIndex(
           (row, index) => selectionKey(row, index) === firstSelected
         );
+  const selectionRevisionRef = useRef({selected, revision: 0});
+  if (!Object.is(selectionRevisionRef.current.selected, selected)) {
+    selectionRevisionRef.current = {
+      selected,
+      revision: selectionRevisionRef.current.revision + 1,
+    };
+  }
   const props: DataGridProps<number> = {
     ...presentation,
     columns: gridColumns,
@@ -76,6 +83,9 @@ export function VirtualDataTable<Row, Key extends string | number>({
           additive
         ),
       focusRowId: focusedPosition >= 0 ? focusedPosition : undefined,
+      // Preserve the legacy wrapper's reveal behavior even when an external
+      // selection update retains the same first selected row.
+      revision: selectionRevisionRef.current.revision,
     },
     onRowContextMenu: onRowContextMenu
       ? (x, y, index) => onRowContextMenu(x, y, rows[index], index)
