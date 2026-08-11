@@ -66,15 +66,48 @@ function interpolate(
   angle: number,
   fraction: number
 ): Coordinate {
-  const sinAngle = Math.sin(angle);
-  if (Math.abs(sinAngle) < 1e-12) return fraction < 0.5 ? start : end;
-  const a = Math.sin((1 - fraction) * angle) / sinAngle;
-  const b = Math.sin(fraction * angle) / sinAngle;
-  return [
-    start[0] * a + end[0] * b,
-    start[1] * a + end[1] * b,
-    start[2] * a + end[2] * b,
+  if (fraction === 1) return end;
+
+  const cosine = clamp(dot(start, end), -1, 1);
+  const tangent = [
+    end[0] - cosine * start[0],
+    end[1] - cosine * start[1],
+    end[2] - cosine * start[2],
   ];
+  const tangentLength = Math.hypot(...tangent);
+
+  // Antipodal points do not define a unique great-circle plane. Pick one
+  // deterministically so the arc remains dense instead of collapsing into a
+  // half-world jump. Coincident points, on the other hand, need no arc.
+  if (tangentLength < 1e-12) {
+    if (cosine > 0) return start;
+    tangent.splice(0, 3, ...orthogonal(start));
+  } else {
+    for (let index = 0; index < tangent.length; index += 1)
+      tangent[index] /= tangentLength;
+  }
+
+  const alongStart = Math.cos(fraction * angle);
+  const alongTangent = Math.sin(fraction * angle);
+  return [
+    start[0] * alongStart + tangent[0] * alongTangent,
+    start[1] * alongStart + tangent[1] * alongTangent,
+    start[2] * alongStart + tangent[2] * alongTangent,
+  ];
+}
+
+function orthogonal(vector: Coordinate): Coordinate {
+  const axis = [0, 0, 0];
+  const leastAligned = vector
+    .map(Math.abs)
+    .indexOf(Math.min(...vector.map(Math.abs)));
+  axis[leastAligned] = 1;
+  const projection = dot(axis, vector);
+  const tangent = axis.map(
+    (component, index) => component - projection * vector[index]
+  );
+  const length = Math.hypot(...tangent);
+  return tangent.map((component) => component / length);
 }
 
 function dot(left: Coordinate, right: Coordinate): number {
