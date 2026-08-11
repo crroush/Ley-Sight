@@ -1028,7 +1028,8 @@ export class FastPointEngine {
         );
         return geodesicLine(
           controlCoordinates,
-          geometry as LineString | undefined
+          geometry as LineString | undefined,
+          this.map.getView().getResolution() ?? 1
         );
       },
       style: new Style({

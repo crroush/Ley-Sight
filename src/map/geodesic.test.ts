@@ -26,3 +26,18 @@ test('geodesicLine unwraps a dateline crossing into a short path', () => {
     );
   }
 });
+
+test('geodesicLine avoids sub-pixel vertices at whole-world resolution', () => {
+  const controls = [fromLonLat([-60, 45]), fromLonLat([60, 45])];
+  const detailed = geodesicLine(controls, undefined, 1_000).getCoordinates();
+  const wholeWorld = geodesicLine(
+    controls,
+    undefined,
+    156_543
+  ).getCoordinates();
+
+  assert.ok(wholeWorld.length < detailed.length / 4);
+  assert.ok(wholeWorld.length <= 10);
+  const midpoint = toLonLat(wholeWorld[Math.floor(wholeWorld.length / 2)]);
+  assert.ok(midpoint[1] > 60);
+});

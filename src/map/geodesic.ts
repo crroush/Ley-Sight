@@ -3,13 +3,15 @@ import LineString from 'ol/geom/LineString.js';
 import {fromLonLat, toLonLat} from 'ol/proj.js';
 
 const EARTH_CIRCUMFERENCE_M = 2 * Math.PI * 6_378_137;
-const DEFAULT_MAX_ANGLE_RADIANS = Math.PI / 180;
+const MIN_ANGLE_RADIANS = Math.PI / 180;
+const MAX_ANGLE_RADIANS = Math.PI / 6;
+const TARGET_SEGMENT_PIXELS = 16;
 
 /** Builds a projected polyline following the shortest great-circle arcs. */
 export function geodesicLine(
   controls: Coordinate[],
   geometry?: LineString,
-  maxAngleRadians = DEFAULT_MAX_ANGLE_RADIANS
+  resolution = 1
 ): LineString {
   const line = geometry ?? new LineString([]);
   if (controls.length < 2) {
@@ -17,6 +19,13 @@ export function geodesicLine(
     return line;
   }
 
+  // OpenLayers resolution is projected map units per CSS pixel. Sampling from
+  // it avoids creating hundreds of sub-pixel vertices at whole-world zooms.
+  const maxAngleRadians = clamp(
+    (resolution * TARGET_SEGMENT_PIXELS) / 6_378_137,
+    MIN_ANGLE_RADIANS,
+    MAX_ANGLE_RADIANS
+  );
   const result: Coordinate[] = [controls[0].slice()];
   let previousX = result[0][0];
   for (let index = 1; index < controls.length; index += 1) {
