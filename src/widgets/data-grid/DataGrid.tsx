@@ -218,6 +218,10 @@ export function DataGrid<RowId>({
                 })
                 .map((position) => rowSource.rowIdAt(position));
       if (revision === sortRevisionRef.current) {
+        // The presentation positions change when the completed ordering lands.
+        // Clear again here because the user may have established a new anchor
+        // while an asynchronous sort was in flight.
+        anchorRef.current = null;
         setSortedRows(rows);
         if (!refresh) onPageChange?.(0);
       }
