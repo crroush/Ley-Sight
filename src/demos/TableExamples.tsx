@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MouseEvent as ReactMouseEvent,
-} from 'react';
-import {useVirtualizer} from '@tanstack/react-virtual';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import {containsCoordinate} from 'ol/extent.js';
 import {fromLonLat} from 'ol/proj.js';
 import {HistogramRange} from '../components/HistogramRange';
@@ -14,6 +7,7 @@ import {
   formatFullTimestamp,
 } from '../lib/timeHistogram';
 import {FastPointEngine} from '../map/FastPointEngine';
+import {DataGrid, type DataGridColumn} from '../widgets/data-grid/DataGrid';
 import {
   createReferenceDataset,
   createReferenceRandom,
@@ -28,82 +22,52 @@ const VIRTUAL_ROW_COUNT = 250_000;
  * only the rows intersecting the scroll viewport are mounted.
  */
 export function VirtualFeatureTableExampleApp() {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const anchorRef = useRef<number | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const virtualizer = useVirtualizer({
-    count: VIRTUAL_ROW_COUNT,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => 27,
-    overscan: 12,
-  });
+  const [focusRow, setFocusRow] = useState<number>();
+  const columns = useMemo<readonly DataGridColumn<number>[]>(
+    () => [
+      {key: 'id', label: 'Feature ID', renderCell: (row) => `pt_${row}`},
+      {key: 'value', label: 'Value', renderCell: (row) => row},
+      {
+        key: 'bucket',
+        label: 'Bucket',
+        renderCell: (row) => Math.floor(row / 100),
+      },
+    ],
+    []
+  );
   const selectedPreview = Array.from(selected)
     .slice(0, 8)
     .map((row) => `pt_${row}`);
 
-  const chooseRow = (
-    row: number,
-    event: ReactMouseEvent<HTMLButtonElement>
-  ): void => {
-    if (event.shiftKey && anchorRef.current != null) {
-      const first = Math.min(anchorRef.current, row);
-      const last = Math.max(anchorRef.current, row);
-      const range = new Set<number>();
-      for (let index = first; index <= last; index += 1) range.add(index);
-      if (event.ctrlKey || event.metaKey) {
-        setSelected((current) => new Set([...current, ...range]));
-      } else {
-        setSelected(range);
-      }
-      return;
-    }
-    anchorRef.current = row;
-    if (event.ctrlKey || event.metaKey) {
+  const chooseRows = (rows: readonly number[], additive: boolean): void => {
+    if (additive && rows.length === 1) {
       setSelected((current) => {
         const next = new Set(current);
-        if (next.has(row)) next.delete(row);
-        else next.add(row);
+        if (next.has(rows[0])) next.delete(rows[0]);
+        else next.add(rows[0]);
         return next;
       });
-    } else {
-      setSelected(new Set([row]));
+      return;
     }
+    setSelected((current) =>
+      additive ? new Set([...current, ...rows]) : new Set(rows)
+    );
   };
 
   return (
     <div className="reference-example-window reference-virtual-table-window">
-      <section className="reference-table-frame">
-        <div className="reference-table-header reference-virtual-columns">
-          <span>Feature ID</span>
-          <span>Value</span>
-          <span>Bucket</span>
-        </div>
-        <div className="reference-table-scroll" ref={scrollRef}>
-          <div
-            className="reference-table-spacer"
-            style={{height: virtualizer.getTotalSize()}}
-          >
-            {virtualizer.getVirtualItems().map((item) => {
-              const row = item.index;
-              return (
-                <button
-                  type="button"
-                  className={`reference-table-row reference-virtual-columns ${
-                    selected.has(row) ? 'is-selected' : ''
-                  }`}
-                  key={row}
-                  style={{transform: `translateY(${item.start}px)`}}
-                  onClick={(event) => chooseRow(row, event)}
-                >
-                  <span>pt_{row}</span>
-                  <span>{row}</span>
-                  <span>{Math.floor(row / 100)}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </section>
+      <DataGrid
+        columns={columns}
+        rowSource={{rowCount: VIRTUAL_ROW_COUNT, rowIdAt: (row) => row}}
+        selection={{
+          isSelected: (row) => selected.has(row),
+          onSelection: chooseRows,
+          focusRowId: focusRow,
+        }}
+        headerClassName="reference-table-header reference-virtual-columns"
+        rowClassName="reference-table-row reference-virtual-columns"
+      />
       <p className="reference-table-status">
         {selected.size
           ? `Selected ${selected.size.toLocaleString()} rows: ${selectedPreview.join(
@@ -118,8 +82,7 @@ export function VirtualFeatureTableExampleApp() {
           setSelected(
             new Set(Array.from({length: 11}, (_, index) => index + 10))
           );
-          anchorRef.current = 10;
-          virtualizer.scrollToIndex(10, {align: 'center'});
+          setFocusRow(10);
         }}
       >
         Select rows 10-20 via feature IDs
@@ -201,107 +164,47 @@ function ActivityTable({
   selected,
   onSelect,
 }: ActivityTableProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const anchorRef = useRef<number | null>(null);
-  const [sort, setSort] = useState<{
-    column: 'id' | 'activity' | 'time';
-    descending: boolean;
-  }>({column: 'id', descending: false});
-  const displayIndices = useMemo(() => {
-    const output = [...visibleIndices];
-    output.sort((first, second) => {
-      const firstValue =
-        sort.column === 'id'
-          ? first
-          : sort.column === 'time'
-            ? rows[first].time
-            : rows[first].activity;
-      const secondValue =
-        sort.column === 'id'
-          ? second
-          : sort.column === 'time'
-            ? rows[second].time
-            : rows[second].activity;
-      const comparison =
-        typeof firstValue === 'number'
-          ? firstValue - (secondValue as number)
-          : firstValue.localeCompare(secondValue as string);
-      return sort.descending ? -comparison : comparison;
-    });
-    return output;
-  }, [rows, sort, visibleIndices]);
-  const virtualizer = useVirtualizer({
-    count: displayIndices.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => 27,
-    overscan: 12,
-  });
   const firstSelected = selected.values().next().value as number | undefined;
-
-  useEffect(() => {
-    if (firstSelected == null) return;
-    const row = displayIndices.indexOf(firstSelected);
-    if (row >= 0) virtualizer.scrollToIndex(row, {align: 'auto'});
-  }, [displayIndices, firstSelected, virtualizer]);
-
-  const changeSort = (column: typeof sort.column): void => {
-    setSort((current) => ({
-      column,
-      descending: current.column === column ? !current.descending : false,
-    }));
-  };
+  const columns = useMemo<readonly DataGridColumn<number>[]>(
+    () => [
+      {
+        key: 'id',
+        label: 'ID',
+        sortValue: (index) => index,
+        renderCell: (index) => `time_point_${rows[index].id}`,
+      },
+      {
+        key: 'activity',
+        label: 'Activity',
+        sortValue: (index) => rows[index].activity,
+        renderCell: (index) => rows[index].activity,
+      },
+      {
+        key: 'time',
+        label: 'Timestamp',
+        sortValue: (index) => rows[index].time,
+        renderCell: (index) => formatFullTimestamp(rows[index].time),
+      },
+    ],
+    [rows]
+  );
 
   return (
-    <section className="reference-table-frame">
-      <div className="reference-table-header reference-activity-columns">
-        {(['id', 'activity', 'time'] as const).map((column) => (
-          <button type="button" key={column} onClick={() => changeSort(column)}>
-            {column === 'id'
-              ? 'ID'
-              : column === 'activity'
-                ? 'Activity'
-                : 'Timestamp'}
-            {sort.column === column ? (sort.descending ? ' ▼' : ' ▲') : ''}
-          </button>
-        ))}
-      </div>
-      <div className="reference-table-scroll" ref={scrollRef}>
-        <div
-          className="reference-table-spacer"
-          style={{height: virtualizer.getTotalSize()}}
-        >
-          {virtualizer.getVirtualItems().map((item) => {
-            const index = displayIndices[item.index];
-            const row = rows[index];
-            return (
-              <button
-                type="button"
-                className={`reference-table-row reference-activity-columns ${
-                  selected.has(index) ? 'is-selected' : ''
-                }`}
-                key={index}
-                style={{transform: `translateY(${item.start}px)`}}
-                onClick={(event) => {
-                  const additive = event.ctrlKey || event.metaKey;
-                  if (event.shiftKey && anchorRef.current != null) {
-                    const first = Math.min(anchorRef.current, item.index);
-                    const last = Math.max(anchorRef.current, item.index);
-                    onSelect(displayIndices.slice(first, last + 1), additive);
-                  } else {
-                    anchorRef.current = item.index;
-                    onSelect([index], additive);
-                  }
-                }}
-              >
-                <span>time_point_{row.id}</span>
-                <span>{row.activity}</span>
-                <span>{formatFullTimestamp(row.time)}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </section>
+    <DataGrid
+      columns={columns}
+      rowSource={{
+        rowCount: visibleIndices.length,
+        rowIdAt: (position) => visibleIndices[position],
+        revision: visibleIndices,
+      }}
+      selection={{
+        isSelected: (index) => selected.has(index),
+        onSelection: onSelect,
+        focusRowId: firstSelected,
+      }}
+      headerClassName="reference-table-header reference-activity-columns"
+      rowClassName="reference-table-row reference-activity-columns"
+    />
   );
 }
 

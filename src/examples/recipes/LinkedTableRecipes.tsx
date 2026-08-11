@@ -6,10 +6,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import {
-  VirtualDataTable,
-  type VirtualDataTableColumn,
-} from '../../toolkit/widgets';
+import {DataGrid, type DataGridColumn} from '../../toolkit/widgets';
 import Feature from 'ol/Feature.js';
 import Point from 'ol/geom/Point.js';
 import VectorLayer from 'ol/layer/Vector.js';
@@ -99,24 +96,31 @@ function VirtualGrid({
     () => Array.from({length: count}, (_, row) => row),
     [count]
   );
-  const tableColumns = useMemo<readonly VirtualDataTableColumn<number>[]>(
+  const tableColumns = useMemo<readonly DataGridColumn<number>[]>(
     () =>
       headings.map((heading, column) => ({
         key: column,
-        heading,
+        label: heading,
         sortValue: (row) => sortValues[column](row),
-        render: (row) => cells(row)[column],
+        renderCell: (row) => cells(row)[column],
       })),
     [cells, headings, sortValues]
   );
+  const firstSelected = selected.values().next().value as number | undefined;
   return (
-    <VirtualDataTable
-      rows={rows}
+    <DataGrid
       columns={tableColumns}
+      rowSource={{
+        rowCount: rows.length,
+        rowIdAt: (position) => rows[position],
+        positionOf: (row) => (row >= 0 && row < rows.length ? row : -1),
+      }}
+      selection={{
+        isSelected: (row) => selected.has(row),
+        onSelection,
+        focusRowId: firstSelected,
+      }}
       rowKey={(row) => rowKey(row)}
-      selected={selected}
-      selectionKey={(row) => row}
-      onSelection={onSelection}
       gridTemplateColumns={columns}
     />
   );
