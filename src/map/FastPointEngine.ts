@@ -121,6 +121,18 @@ function withAlpha(color: number, alpha: number): number {
   return ((color & 0xffffff00) | Math.max(0, Math.min(255, alpha))) >>> 0;
 }
 
+function coordinatesEqual(
+  left: number[] | undefined,
+  right: number[] | undefined
+): boolean {
+  return (
+    left !== undefined &&
+    right !== undefined &&
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
+}
+
 export class FastPointEngine {
   readonly map: OLMap;
   private readonly layer: ImageLayer<ImageCanvasSource>;
@@ -1030,9 +1042,26 @@ export class FastPointEngine {
       source: this.measurementSource,
       type: 'LineString',
       geometryFunction: (coordinates, geometry) => {
-        controlCoordinates = (coordinates as number[][]).map((coordinate) =>
-          coordinate.slice()
+        const incomingCoordinates = (coordinates as number[][]).map(
+          (coordinate) => coordinate.slice()
         );
+        const renderedCoordinates = geometry?.getCoordinates();
+        const replaysRenderedGeometry =
+          renderedCoordinates != null &&
+          incomingCoordinates.length > controlCoordinates.length &&
+          incomingCoordinates.every((coordinate, index) =>
+            coordinatesEqual(coordinate, renderedCoordinates[index])
+          );
+
+        // Draw can finalize a custom LineString by feeding its current geometry
+        // back through this function after removing the trailing sketch point.
+        // That geometry is the densified geodesic, not the user's controls.
+        if (!replaysRenderedGeometry) controlCoordinates = incomingCoordinates;
+        else if (
+          coordinatesEqual(controlCoordinates.at(-1), controlCoordinates.at(-2))
+        )
+          controlCoordinates = controlCoordinates.slice(0, -1);
+
         return geodesicLine(
           controlCoordinates,
           geometry as LineString | undefined,
