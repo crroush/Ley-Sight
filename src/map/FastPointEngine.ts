@@ -11,12 +11,11 @@ import XYZ from 'ol/source/XYZ.js';
 import DragBox from 'ol/interaction/DragBox.js';
 import Draw from 'ol/interaction/Draw.js';
 import {defaults as defaultInteractions} from 'ol/interaction/defaults.js';
-import {unByKey} from 'ol/Observable.js';
 import {fromLonLat, toLonLat} from 'ol/proj.js';
 import LineString from 'ol/geom/LineString.js';
 import {getDistance} from 'ol/sphere.js';
 import {Circle as CircleStyle, Fill, Stroke, Style} from 'ol/style.js';
-import type {EventsKey} from 'ol/events.js';
+import type {StyleFunction} from 'ol/style/Style.js';
 import type {
   BaseLayerDefinition,
   CompactSpatialIndex,
@@ -121,16 +120,29 @@ function withAlpha(color: number, alpha: number): number {
   return ((color & 0xffffff00) | Math.max(0, Math.min(255, alpha))) >>> 0;
 }
 
-function coordinatesEqual(
-  left: number[] | undefined,
-  right: number[] | undefined
-): boolean {
-  return (
-    left !== undefined &&
-    right !== undefined &&
-    left.length === right.length &&
-    left.every((value, index) => value === right[index])
-  );
+export function createMeasurementStyle(color: string): StyleFunction {
+  const stroke = new Stroke({
+    color,
+    width: 3,
+    lineCap: 'round',
+    lineJoin: 'round',
+  });
+  const image = new CircleStyle({
+    radius: 5,
+    fill: new Fill({color: '#071019'}),
+    stroke: new Stroke({color, width: 2}),
+  });
+  const pointStyle = new Style({image});
+
+  return (feature, resolution) => {
+    const geometry = feature.getGeometry();
+    if (!(geometry instanceof LineString)) return pointStyle;
+    return new Style({
+      geometry: geodesicLine(geometry.getCoordinates(), undefined, resolution),
+      stroke,
+      image,
+    });
+  };
 }
 
 export class FastPointEngine {
@@ -141,7 +153,6 @@ export class FastPointEngine {
   private readonly measurementSource = new VectorSource();
   private readonly measurementLayer: VectorLayer<VectorSource>;
   private readonly measurementDraw: Draw;
-  private readonly measurementResolutionKey: EventsKey;
   private readonly dragBox: DragBox;
   private readonly managedLayers = new Map<string, TileLayer<XYZ | TileWMS>>();
   private readonly coordinateDisplay: ReferenceCoordinateDisplay;
@@ -210,21 +221,10 @@ export class FastPointEngine {
     this.baseLayer.setZIndex(0);
     this.layer.setZIndex(10);
     const measurementColor = options.measurementColor ?? '#ef4444';
+    const measurementStyleFunction = createMeasurementStyle(measurementColor);
     this.measurementLayer = new VectorLayer({
       source: this.measurementSource,
-      style: new Style({
-        stroke: new Stroke({
-          color: measurementColor,
-          width: 3,
-          lineCap: 'round',
-          lineJoin: 'round',
-        }),
-        image: new CircleStyle({
-          radius: 5,
-          fill: new Fill({color: '#071019'}),
-          stroke: new Stroke({color: measurementColor, width: 2}),
-        }),
-      }),
+      style: measurementStyleFunction,
     });
     this.measurementLayer.setZIndex(30);
     this.countryLayers = createPackagedCountryLayers('#64748b');
@@ -249,10 +249,7 @@ export class FastPointEngine {
     );
 
     this.dragBox = this.installSelection();
-    this.measurementDraw = this.installMeasurement(measurementColor);
-    this.measurementResolutionKey = this.map
-      .getView()
-      .on('change:resolution', () => this.refreshMeasurementGeometry());
+    this.measurementDraw = this.installMeasurement(measurementStyleFunction);
     this.map.on('pointermove', (event) => {
       if (!this.onPointerCoordinate) return;
       const coordinate = event.coordinate;
@@ -780,7 +777,6 @@ export class FastPointEngine {
 
   dispose(): void {
     this.coordinateDisplay.dispose();
-    unByKey(this.measurementResolutionKey);
     this.map.setTarget(undefined);
   }
 
@@ -1036,51 +1032,11 @@ export class FastPointEngine {
     return dragBox;
   }
 
-  private installMeasurement(measurementColor: string): Draw {
-    let controlCoordinates: number[][] = [];
+  private installMeasurement(style: StyleFunction): Draw {
     const draw = new Draw({
       source: this.measurementSource,
       type: 'LineString',
-      geometryFunction: (coordinates, geometry) => {
-        const incomingCoordinates = (coordinates as number[][]).map(
-          (coordinate) => coordinate.slice()
-        );
-        const renderedCoordinates = geometry?.getCoordinates();
-        const replaysRenderedGeometry =
-          renderedCoordinates != null &&
-          incomingCoordinates.length >= controlCoordinates.length &&
-          incomingCoordinates.every((coordinate, index) =>
-            coordinatesEqual(coordinate, renderedCoordinates[index])
-          );
-
-        // Draw can finalize a custom LineString by feeding its current geometry
-        // back through this function after removing the trailing sketch point.
-        // That geometry is the densified geodesic, not the user's controls.
-        if (!replaysRenderedGeometry) controlCoordinates = incomingCoordinates;
-        else if (
-          coordinatesEqual(controlCoordinates.at(-1), controlCoordinates.at(-2))
-        )
-          controlCoordinates = controlCoordinates.slice(0, -1);
-
-        return geodesicLine(
-          controlCoordinates,
-          geometry as LineString | undefined,
-          this.map.getView().getResolution() ?? 1
-        );
-      },
-      style: new Style({
-        stroke: new Stroke({
-          color: measurementColor,
-          width: 3,
-          lineCap: 'round',
-          lineJoin: 'round',
-        }),
-        image: new CircleStyle({
-          radius: 5,
-          fill: new Fill({color: '#071019'}),
-          stroke: new Stroke({color: measurementColor, width: 2}),
-        }),
-      }),
+      style,
     });
     draw.setActive(false);
     this.map.addInteraction(draw);
@@ -1088,31 +1044,17 @@ export class FastPointEngine {
       this.measurementSource.clear();
       const geometry = event.feature.getGeometry();
       if (!(geometry instanceof LineString)) return;
-      geometry.on('change', () => this.emitMeasurement(controlCoordinates));
-      this.emitMeasurement(controlCoordinates);
+      geometry.on('change', () =>
+        this.emitMeasurement(geometry.getCoordinates())
+      );
+      this.emitMeasurement(geometry.getCoordinates());
     });
     draw.on('drawend', (event) => {
-      event.feature.set(
-        'measurementControls',
-        controlCoordinates.map((coordinate) => coordinate.slice())
-      );
       const geometry = event.feature.getGeometry();
       if (geometry instanceof LineString)
-        this.emitMeasurement(controlCoordinates);
+        this.emitMeasurement(geometry.getCoordinates());
     });
     return draw;
-  }
-
-  private refreshMeasurementGeometry(): void {
-    const resolution = this.map.getView().getResolution() ?? 1;
-    for (const feature of this.measurementSource.getFeatures()) {
-      const controls = feature.get('measurementControls') as
-        | number[][]
-        | undefined;
-      const geometry = feature.getGeometry();
-      if (controls && geometry instanceof LineString)
-        geodesicLine(controls, geometry, resolution);
-    }
   }
 
   private emitMeasurement(coordinates: number[][]): void {
