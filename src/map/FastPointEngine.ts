@@ -1048,7 +1048,7 @@ export class FastPointEngine {
         const renderedCoordinates = geometry?.getCoordinates();
         const replaysRenderedGeometry =
           renderedCoordinates != null &&
-          incomingCoordinates.length > controlCoordinates.length &&
+          incomingCoordinates.length >= controlCoordinates.length &&
           incomingCoordinates.every((coordinate, index) =>
             coordinatesEqual(coordinate, renderedCoordinates[index])
           );
