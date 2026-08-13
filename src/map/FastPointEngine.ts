@@ -11,10 +11,11 @@ import XYZ from 'ol/source/XYZ.js';
 import DragBox from 'ol/interaction/DragBox.js';
 import Draw from 'ol/interaction/Draw.js';
 import {defaults as defaultInteractions} from 'ol/interaction/defaults.js';
-import {fromLonLat} from 'ol/proj.js';
+import {fromLonLat, toLonLat} from 'ol/proj.js';
 import LineString from 'ol/geom/LineString.js';
-import {getLength} from 'ol/sphere.js';
+import {getDistance} from 'ol/sphere.js';
 import {Circle as CircleStyle, Fill, Stroke, Style} from 'ol/style.js';
+import type {StyleFunction} from 'ol/style/Style.js';
 import type {
   BaseLayerDefinition,
   CompactSpatialIndex,
@@ -39,17 +40,20 @@ import {
   type ReferenceCoordinateDisplay,
 } from './referenceCoordinateDisplay';
 import {modifierBoxSelection} from './selectionInteractions';
+import {geodesicLine} from './geodesic';
 import {
   createPackagedCountryLayers,
   type PackagedCountryLayers,
 } from './countryLayers';
 
-type EngineOptions = {
+export type EngineOptions = {
   target: HTMLElement;
   onSelectionChange?: (state: EngineSelectionState) => void;
   onMetrics?: (metrics: RenderMetrics) => void;
   onPointerCoordinate?: (coordinate: [number, number] | null) => void;
   onMeasurementChange?: (state: MeasurementState) => void;
+  /** CSS color used for measurement paths and vertices. Defaults to red. */
+  measurementColor?: string;
 };
 
 type RenderStyle = {
@@ -114,6 +118,31 @@ function colorToCss(color: number, opacity = 1): string {
 
 function withAlpha(color: number, alpha: number): number {
   return ((color & 0xffffff00) | Math.max(0, Math.min(255, alpha))) >>> 0;
+}
+
+export function createMeasurementStyle(color: string): StyleFunction {
+  const stroke = new Stroke({
+    color,
+    width: 3,
+    lineCap: 'round',
+    lineJoin: 'round',
+  });
+  const image = new CircleStyle({
+    radius: 5,
+    fill: new Fill({color: '#071019'}),
+    stroke: new Stroke({color, width: 2}),
+  });
+  const pointStyle = new Style({image});
+
+  return (feature, resolution) => {
+    const geometry = feature.getGeometry();
+    if (!(geometry instanceof LineString)) return pointStyle;
+    return new Style({
+      geometry: geodesicLine(geometry.getCoordinates(), undefined, resolution),
+      stroke,
+      image,
+    });
+  };
 }
 
 export class FastPointEngine {
@@ -191,16 +220,11 @@ export class FastPointEngine {
     });
     this.baseLayer.setZIndex(0);
     this.layer.setZIndex(10);
+    const measurementColor = options.measurementColor ?? '#ef4444';
+    const measurementStyleFunction = createMeasurementStyle(measurementColor);
     this.measurementLayer = new VectorLayer({
       source: this.measurementSource,
-      style: new Style({
-        stroke: new Stroke({color: '#22d3ee', width: 3}),
-        image: new CircleStyle({
-          radius: 5,
-          fill: new Fill({color: '#071019'}),
-          stroke: new Stroke({color: '#67e8f9', width: 2}),
-        }),
-      }),
+      style: measurementStyleFunction,
     });
     this.measurementLayer.setZIndex(30);
     this.countryLayers = createPackagedCountryLayers('#64748b');
@@ -225,7 +249,7 @@ export class FastPointEngine {
     );
 
     this.dragBox = this.installSelection();
-    this.measurementDraw = this.installMeasurement();
+    this.measurementDraw = this.installMeasurement(measurementStyleFunction);
     this.map.on('pointermove', (event) => {
       if (!this.onPointerCoordinate) return;
       const coordinate = event.coordinate;
@@ -1008,22 +1032,11 @@ export class FastPointEngine {
     return dragBox;
   }
 
-  private installMeasurement(): Draw {
+  private installMeasurement(style: StyleFunction): Draw {
     const draw = new Draw({
       source: this.measurementSource,
       type: 'LineString',
-      style: new Style({
-        stroke: new Stroke({
-          color: 'rgba(34, 211, 238, 0.9)',
-          lineDash: [8, 6],
-          width: 3,
-        }),
-        image: new CircleStyle({
-          radius: 5,
-          fill: new Fill({color: '#071019'}),
-          stroke: new Stroke({color: '#67e8f9', width: 2}),
-        }),
-      }),
+      style,
     });
     draw.setActive(false);
     this.map.addInteraction(draw);
@@ -1031,32 +1044,37 @@ export class FastPointEngine {
       this.measurementSource.clear();
       const geometry = event.feature.getGeometry();
       if (!(geometry instanceof LineString)) return;
-      geometry.on('change', () => this.emitMeasurement(geometry));
-      this.emitMeasurement(geometry);
+      geometry.on('change', () =>
+        this.emitMeasurement(geometry.getCoordinates())
+      );
+      this.emitMeasurement(geometry.getCoordinates());
     });
     draw.on('drawend', (event) => {
       const geometry = event.feature.getGeometry();
-      if (geometry instanceof LineString) this.emitMeasurement(geometry);
+      if (geometry instanceof LineString)
+        this.emitMeasurement(geometry.getCoordinates());
     });
     return draw;
   }
 
-  private emitMeasurement(geometry: LineString): void {
+  private emitMeasurement(coordinates: number[][]): void {
     if (!this.onMeasurementChange) return;
-    const coordinates = geometry.getCoordinates();
     const segmentMeters: number[] = [];
     for (let index = 1; index < coordinates.length; index += 1) {
       segmentMeters.push(
-        getLength(
-          new LineString([coordinates[index - 1], coordinates[index]]),
-          {projection: 'EPSG:3857'}
+        getDistance(
+          toLonLat(coordinates[index - 1]),
+          toLonLat(coordinates[index])
         )
       );
     }
     this.onMeasurementChange({
       pointCount: coordinates.length,
       segmentMeters,
-      totalMeters: getLength(geometry, {projection: 'EPSG:3857'}),
+      totalMeters: segmentMeters.reduce(
+        (total, distance) => total + distance,
+        0
+      ),
     });
   }
 
